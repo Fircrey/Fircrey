@@ -27,6 +27,13 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      # Antes que snk: su contenedor crea dist/ como root y después no se podría escribir.
+      - name: Tarjeta de estadísticas
+        run: node scripts/stats.mjs dist
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_USER: ${{ github.repository_owner }}
+
       - name: Serpiente de contribuciones
         uses: Platane/snk@v3.5.0
         with:
@@ -34,12 +41,6 @@ jobs:
           outputs: |
             dist/snake-dark.svg?color_snake=#22C3D6&color_dots=#12293A,#0E4A5A,#13738A,#1A9FB4,#22C3D6
             dist/snake-light.svg?color_snake=#0B1E2B&color_dots=#E3EBEF,#B5E6ED,#7FD3DF,#3FBCCD,#08707E
-
-      - name: Tarjeta de estadísticas
-        run: node scripts/stats.mjs dist
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          GITHUB_USER: ${{ github.repository_owner }}
 
       - name: Publicar en la rama output
         uses: crazy-max/ghaction-github-pages@v5
