@@ -45,12 +45,22 @@ function summarize(calendar) {
     longest = Math.max(longest, run);
   }
   const weekly = calendar.weeks.map((w) => w.contributionDays.reduce((s, d) => s + d.contributionCount, 0));
+  const lastWeek = days.slice(-7).reduce((s, d) => s + d.contributionCount, 0);
+  const bestWeek = Math.max(0, ...weekly);
   return {
     contributions: calendar.totalContributions,
     activeDays: days.filter((d) => d.contributionCount > 0).length,
     longestStreak: longest,
-    bestWeek: Math.max(0, ...weekly),
+    bestWeek,
+    lastWeek,
   };
+}
+
+// Ánimo del león marino según los datos reales de los últimos 7 días.
+function mood({ lastWeek, bestWeek }) {
+  if (lastWeek > 0 && lastWeek >= bestWeek * 0.6) return "happy"; // semana excepcional: juega con la pelota
+  if (lastWeek > 0) return "clap"; // hubo actividad: aplaude
+  return "blep"; // semana tranquila: saca la lengua
 }
 
 // Separador de miles con punto, también en cifras de 4 dígitos (Intl es-ES no lo pone).
@@ -85,7 +95,7 @@ function render(theme, meta, values, today) {
       `Actividad en GitHub: ${format(values.contributions)} contribuciones en 12 meses, ` +
       `${values.activeDays} días con actividad, racha más larga de ${values.longestStreak} días, ` +
       `mejor semana con ${values.bestWeek} contribuciones. Actualizado ${today}.`;
-    return tpl.replace("__TITLE__", title);
+    return tpl.replace("__TITLE__", title).replace("/*MOOD*/", `.mood-${mood(values)}{display:inline}`);
   });
 }
 
@@ -96,4 +106,4 @@ await mkdir(OUT, { recursive: true });
 for (const theme of ["dark", "light"]) {
   await writeFile(`${OUT}/stats-${theme}.svg`, await render(theme, meta, values, today));
 }
-console.log(values);
+console.log({ ...values, mood: mood(values) });

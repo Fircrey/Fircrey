@@ -1,8 +1,10 @@
 <a href="https://magnor.tech"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/banner-dark.svg"><img alt="Jesús Nicolás Pachón Suárez · Cofundador y COO de Magnor · De la idea a producción" src="assets/banner-light.svg" width="100%"></picture></a>
 
-Soy cofundador y COO de **[Magnor](https://magnor.tech)**, una empresa de desarrollo de software con productos propios y proyectos a medida. Llevo proyectos de la idea a producción: requerimientos, arquitectura, desarrollo web y móvil, integraciones y despliegue. Estudio Ingeniería de Sistemas en la Universidad Jorge Tadeo Lozano (8.º semestre) y soy técnico en Electricidad y Electrónica.
+<picture><source media="(prefers-color-scheme: dark)" srcset="assets/intro-dark.svg"><img alt="Jesús Pachón: Soy cofundador y COO de Magnor, una empresa de desarrollo de software con productos propios y proyectos a medida. Llevo proyectos de la idea a producción: requerimientos, arquitectura, desarrollo web y móvil, integraciones y despliegue. Estudio Ingeniería de Sistemas en la Universidad Jorge Tadeo Lozano (8.º semestre) y soy técnico en Electricidad y Electrónica." src="assets/intro-light.svg" width="100%"></picture>
 
-**[magnor.tech](https://magnor.tech)** · [LinkedIn](https://www.linkedin.com/in/jesus-pachon-suarez) · [pachonsuarezjesus@gmail.com](mailto:pachonsuarezjesus@gmail.com)
+<p><a href="https://magnor.tech"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/btn-web-dark.svg"><img alt="Sitio web" src="assets/btn-web-light.svg"></picture></a>
+<a href="https://www.linkedin.com/in/jesus-pachon-suarez"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/btn-linkedin-dark.svg"><img alt="LinkedIn" src="assets/btn-linkedin-light.svg"></picture></a>
+<a href="mailto:pachonsuarezjesus@gmail.com"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/btn-email-dark.svg"><img alt="Escríbeme" src="assets/btn-email-light.svg"></picture></a></p>
 
 <picture><source media="(prefers-color-scheme: dark)" srcset="assets/impact-dark.svg"><img alt="12 días de cero a producción · más de 1.800 pruebas automatizadas en un solo proyecto · apps publicadas en App Store y Google Play · 5 productos en producción o piloto" src="assets/impact-light.svg" width="100%"></picture>
 

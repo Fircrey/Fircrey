@@ -42,7 +42,9 @@ jobs:
             dist/snake-dark.svg?color_snake=#22C3D6&color_dots=#12293A,#0E4A5A,#13738A,#1A9FB4,#22C3D6
             dist/snake-light.svg?color_snake=#0B1E2B&color_dots=#E3EBEF,#B5E6ED,#7FD3DF,#3FBCCD,#08707E
 
+      # En los PR solo se comprueba que todo se genera; publicar es cosa de main.
       - name: Publicar en la rama output
+        if: github.event_name != 'pull_request'
         uses: crazy-max/ghaction-github-pages@v5
         with:
           target_branch: output

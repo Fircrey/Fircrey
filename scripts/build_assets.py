@@ -197,6 +197,28 @@ def lit_delay(at: float, period: float) -> str:
     return f"{_num(((at - 0.1) % period) - period)}s"
 
 
+PIXEL = ROOT / "assets" / "pixel"
+
+
+def scene(name: str, x: float, y: float, w: float, h: float, fit: str = "slice") -> str:
+    """Escena pixel art (PNG nativo incrustado) escalada sin suavizado."""
+    import pixel
+
+    return (f'<image href="{pixel.png_data_uri(PIXEL / f"{name}.png")}" x="{_num(x)}" y="{_num(y)}" '
+            f'width="{_num(w)}" height="{_num(h)}" preserveAspectRatio="xMidYMid {fit}" '
+            f'style="image-rendering:crisp-edges;image-rendering:pixelated"/>')
+
+
+def corners(w: float, h: float, o: float = 10, k: float = 14) -> str:
+    return (f'<path d="M{o} {o + k}V{o}H{o + k}M{w - o - k} {o}H{w - o}V{o + k}M{w - o} {h - o - k}V{h - o}H{w - o - k}'
+            f'M{o + k} {h - o}H{o}V{h - o - k}" stroke="#22C3D6" stroke-width="1.5" stroke-opacity=".7"/>')
+
+
+def shadowed(face: "Face", s: str, x: float, y: float, size: float, fill: str, **kw) -> str:
+    """Texto con sombra en escalón para escribir sobre escenas pixel."""
+    return text(face, s, x + 3, y + 3, size, "#06121B", **kw) + text(face, s, x, y, size, fill, **kw)
+
+
 def write(name: str, theme: str, content: str) -> None:
     ASSETS.mkdir(exist_ok=True)
     (ASSETS / f"{name}-{theme}.svg").write_text(content, encoding="utf-8")
@@ -228,6 +250,7 @@ PROJECTS = [
         result="En 12 días pasó a publicar sola noticias, documentos, calendario y galería desde su propio panel.",
         chips=["+1.800 pruebas", "Accesibilidad 100/100", "Acceso por roles"],
         stack="Next.js · TypeScript · PostgreSQL",
+        art="proj-federacion",
     ),
     dict(
         slug="seguridad",
@@ -248,6 +271,7 @@ PROJECTS = [
         result="Ya está en pilotos remunerados.",
         chips=["176 pruebas", "73 endpoints", "29 tablas"],
         stack="Next.js · Expo · Drizzle · PostgreSQL",
+        art="proj-filo",
     ),
     dict(
         slug="atencion-ia",
@@ -270,6 +294,7 @@ MAGNOR = dict(
     result="En producción 15 días después de empezar.",
     chips=["171 pruebas", "15 días a producción", "Portada 3D"],
     stack="Next.js · React · PostgreSQL",
+    art="proj-magnor",
 )
 
 STACK = [
@@ -333,6 +358,104 @@ def banner(t: dict) -> str:
     return svg(W, h, title, "".join(b), css)
 
 
+INTRO = ("Soy cofundador y COO de Magnor, una empresa de desarrollo de software con productos propios y "
+         "proyectos a medida. Llevo proyectos de la idea a producción: requerimientos, arquitectura, desarrollo "
+         "web y móvil, integraciones y despliegue. Estudio Ingeniería de Sistemas en la Universidad Jorge Tadeo "
+         "Lozano (8.º semestre) y soy técnico en Electricidad y Electrónica.")
+TYPE_CPS = 55  # caracteres por segundo del efecto de máquina de escribir
+
+
+def intro(t: dict) -> str:
+    """La intro como cuadro de diálogo de RPG: retrato, placa con el nombre y
+    texto que se escribe una sola vez y queda fijo."""
+    import pixel
+
+    S = 4
+    busts = [pixel.from_png(PIXEL / "portrait" / f"idle{i}.png") for i in range(2)]
+    size, lh = 21, 31
+    px0, py0 = 26, 46                       # esquina del cuadro (deja sitio a la placa)
+    pw = 200                                # columna del retrato
+    tx = px0 + pw + 40
+    lines = SANS[400].wrap(INTRO, size, W - tx - 70)
+    bh = max(len(lines) * lh + 64, 230)
+    h = py0 + bh + 18
+    box_w = W - 2 * px0
+    bg = "#0B1E2B"
+
+    b = [f'<rect x="{px0}" y="{py0}" width="{box_w}" height="{bh}" fill="{bg}"/>',
+         # marco doble en escalón, como los cuadros de diálogo clásicos
+         f'<rect x="{px0 + 3}" y="{py0 + 3}" width="{box_w - 6}" height="{bh - 6}" stroke="#E6F3F6" stroke-width="6" shape-rendering="crispEdges"/>',
+         f'<rect x="{px0 + 12}" y="{py0 + 12}" width="{box_w - 24}" height="{bh - 24}" stroke="#22C3D6" stroke-width="3" shape-rendering="crispEdges"/>',
+         f'<rect x="{px0 + 6}" y="{py0 + bh}" width="{box_w}" height="6" fill="#06121B"/>',
+         f'<rect x="{px0 + box_w}" y="{py0 + 6}" width="6" height="{bh}" fill="#06121B"/>']
+
+    # retrato
+    fx, fy, fs = px0 + 34, py0 + 34, pw - 20
+    b.append(f'<rect x="{fx}" y="{fy}" width="{fs}" height="{bh - 68}" fill="#10293A" stroke="#22C3D6" stroke-width="3" shape-rendering="crispEdges"/>')
+    bw, bht = len(busts[0][0]) * S, len(busts[0]) * S
+    ox, oy = fx + (fs - bw) / 2, fy + bh - 68 - bht
+    b.append(f'<g shape-rendering="crispEdges"><g class="pb0">{pixel.to_paths(busts[0], S, ox, oy)}</g>'
+             f'<g class="pb1">{pixel.to_paths(busts[1], S, ox, oy)}</g></g>')
+
+    # placa con el nombre
+    name = "JESÚS PACHÓN"
+    nw = MONO[500].width(name, 15, 0.1) + 36
+    b.append(f'<rect x="{px0 + 34}" y="{py0 - 18}" width="{_num(nw)}" height="40" fill="#06121B"/>'
+             f'<rect x="{px0 + 30}" y="{py0 - 22}" width="{_num(nw)}" height="40" fill="#22C3D6"/>')
+    b.append(text(MONO[500], name, px0 + 48, py0 + 4, 15, "#0B1E2B", track=0.1))
+
+    # texto, con "Magnor" resaltado y una cortina por línea para el efecto de escritura
+    css = []
+    t0 = 0.6
+    for i, line in enumerate(lines):
+        y = py0 + 58 + i * lh
+        k = line.find("Magnor")
+        if k < 0:
+            b.append(text(SANS[400], line, tx, y, size, "#E6F3F6"))
+        else:
+            pre, post = line[:k], line[k + 6:]
+            b.append(text(SANS[400], pre, tx, y, size, "#E6F3F6"))
+            b.append(text(SANS[400], "Magnor", tx + SANS[400].width(pre, size), y, size, "#22C3D6"))
+            b.append(text(SANS[400], post, tx + SANS[400].width(pre + "Magnor", size), y, size, "#E6F3F6"))
+        lw = SANS[400].width(line, size) + 12
+        dur = len(line) / TYPE_CPS
+        b.append(f'<rect class="tp" style="animation-duration:{dur:.2f}s;animation-delay:{t0:.2f}s;'
+                 f'animation-timing-function:steps({len(line)})" x="{tx - 2}" y="{y - size - 4}" width="{_num(lw + 4)}" height="{lh}" fill="{bg}"/>')
+        t0 += dur + 0.12
+    b.append(f'<path class="nx" style="animation-delay:{t0:.2f}s" d="M{px0 + box_w - 56} {py0 + bh - 46}h18l-9 10z" fill="#22C3D6"/>')
+
+    # la cortina se encoge hacia la derecha; sin animación queda a escala 0 (texto visible)
+    css.append(".tp{transform-box:fill-box;transform-origin:100% 50%;transform:scaleX(0);animation-name:tp;animation-fill-mode:both}"
+               "@keyframes tp{from{transform:scaleX(1)}to{transform:scaleX(0)}}")
+    css.append(".nx{animation:nx 1s steps(1) infinite both}@keyframes nx{0%{opacity:1}50%{opacity:0}}")
+    css.append(pixel.vis_css("pb1", [(3.2, 3.5)], 3.5) + ".pb0{opacity:1}")
+    return svg(W, h, "Jesús Pachón: " + INTRO, "".join(b), "".join(css))
+
+
+LINKS = [
+    ("web", "SITIO WEB", "https://magnor.tech"),
+    ("linkedin", "LINKEDIN", "https://www.linkedin.com/in/jesus-pachon-suarez"),
+    ("email", "ESCRÍBEME", "mailto:pachonsuarezjesus@gmail.com"),
+]
+
+
+def menu_button(t: dict, label_text: str) -> str:
+    """Botón de menú RPG: marco con esquinas en escalón, como las opciones de
+    diálogo de un videojuego de 16 bits. Lleva un margen transparente a la
+    derecha para que varios botones seguidos no queden pegados."""
+    size, pad_x, h, gap = 15, 26, 52, 14
+    tw = MONO[500].width(label_text, size, 0.08)
+    w = round(tw + pad_x * 2 + 30)
+    cut = 7  # tamaño del corte en escalón de cada esquina
+    d = (f"M{cut} 0H{w - cut}L{w} {cut}V{h - cut}L{w - cut} {h}H{cut}L0 {h - cut}V{cut}Z")
+    b = [f'<path d="{d}" fill="{t["bg"]}" stroke="#22C3D6" stroke-width="3" shape-rendering="crispEdges"/>']
+    # flecha triangular, como el cursor de "continuar" del diálogo
+    ay = h / 2
+    b.append(f'<path d="M{pad_x - 14} {ay - 7}l12 7l-12 7z" fill="#22C3D6"/>')
+    b.append(text(MONO[500], label_text, pad_x + 10, ay + size * 0.36, size, t["text"], track=0.08))
+    return svg(w + gap, h, label_text, "".join(b))
+
+
 def impact(t: dict) -> str:
     h, m = 200, 48
     vsize, lsize = 52, 17
@@ -354,12 +477,18 @@ def impact(t: dict) -> str:
     return svg(W, h, title, "".join(b))
 
 
-def card_layout(p: dict, inner_w: float, pad: float) -> dict:
-    tw = inner_w - 2 * pad
+ART_H = 190       # alto del arte sobre las tarjetas de media anchura
+SIDE_ART_W = 500  # ancho del arte a la derecha en la tarjeta ancha
+
+
+def card_layout(p: dict, inner_w: float, pad: float, side: float = 0) -> dict:
+    tw = inner_w - 2 * pad - side
     return dict(
         title=SANS[700].wrap(p["title"], 30, tw),
         what=SANS[400].wrap(p["what"], 18, tw),
         result=SANS[500].wrap(p["result"], 19, tw - 26),
+        side=side,
+        top=bool(p.get("art")) and not side,
     )
 
 
@@ -367,11 +496,22 @@ def card(t: dict, p: dict, w: float, h: float, lay: dict) -> str:
     o, pad = 8, 32  # margen exterior transparente (separa las tarjetas) y relleno interior
     iw, ih = w - 2 * o, h - 2 * o
     x0 = o + pad
+    xr = w - o - pad - lay["side"]  # borde derecho del texto
     b = [frame(t, o, o, iw, ih, r=16)]
-    y = o + 50
+    if p.get("art"):
+        b.append(f'<clipPath id="ca"><rect x="{o}" y="{o}" width="{iw}" height="{ih}" rx="16"/></clipPath>')
+        if lay["side"]:
+            ax = w - o - lay["side"]
+            b.append(f'<g clip-path="url(#ca)">{scene(p["art"], ax, o, lay["side"], ih)}</g>')
+            b.append(f'<path d="M{ax} {o}V{o + ih}" stroke="{t["border"]}"/>')
+        else:
+            b.append(f'<g clip-path="url(#ca)">{scene(p["art"], o, o, iw, ART_H)}</g>')
+            b.append(f'<path d="M{o} {o + ART_H}H{o + iw}" stroke="{t["border"]}"/>')
+        b.append(f'<rect x="{o + .5}" y="{o + .5}" width="{iw - 1}" height="{ih - 1}" rx="15.5" stroke="{t["border"]}"/>')
+    y = o + (ART_H if lay["top"] else 0) + 50
     if p["status"]:
         b.append(status(t, p["status"], x0, y))
-    b.append(label(p["kind"], w - o - pad, y, t["muted"], 12, anchor="end"))
+    b.append(label(p["kind"], xr, y, t["muted"], 12, anchor="end"))
     y += 52
     for line in lay["title"]:
         b.append(text(SANS[700], line, x0, y, 30, t["text"], track=-0.01))
@@ -389,21 +529,21 @@ def card(t: dict, p: dict, w: float, h: float, lay: dict) -> str:
     cx = x0
     for c in p["chips"]:
         body, cw = chip(t, c, cx, cy, 13)
-        if cx + cw > w - o - pad:
+        if cx + cw > xr:
             break
         b.append(body)
         cx += cw + 8
     fy = o + ih - 52
-    b.append(f'<path d="M{x0} {fy}H{w - o - pad}" stroke="{t["border"]}"/>')
+    b.append(f'<path d="M{x0} {fy}H{xr}" stroke="{t["border"]}"/>')
     b.append(text(MONO[400], p["stack"], x0, fy + 30, 13, t["muted"]))
-    b.append(label("Ver caso →", w - o - pad, fy + 30, t["accent_text"], 13, anchor="end"))
+    b.append(label("Ver caso →", xr, fy + 30, t["accent_text"], 13, anchor="end"))
     title = f'{p["title"]}. {p["what"]} {p["result"]} Stack: {p["stack"]}.'
     return svg(w, h, title, "".join(b), PULSE_CSS if p["status"] else "")
 
 
 def card_height(lay: dict) -> float:
     content = 50 + 52 + 37 * len(lay["title"]) + 10 + 25 * len(lay["what"]) + 10 + 26 * len(lay["result"])
-    return content + 8 + 16 + 108 + 8  # hueco antes de chips + chips + pie + márgenes
+    return content + 8 + 16 + 108 + 8 + (ART_H if lay["top"] else 0)  # chips + pie + márgenes (+ arte)
 
 
 def section(t: dict, num: str, name: str, note: str) -> str:
@@ -416,75 +556,153 @@ def section(t: dict, num: str, name: str, note: str) -> str:
     return svg(W, h, f"{num} {name}", "".join(b))
 
 
+TREE_PERIOD = 8.0
+TREE_EMIT = 5.3     # segundo del ciclo en que sale la onda
+WAVE_SPEED = 650.0  # px/s
+
+
 def stack(t: dict) -> str:
+    """Stack por capas, como un edificio de pisos. Un árbol lanza una onda de
+    sonido y cada tecnología tiembla al pasarle la onda, sin caerse."""
+    import pixel
+
     m, row_h, top = 48, 66, 116
     h = top + row_h * len(STACK) + 30
+    S = 3
+    tree = {k: pixel.from_png(PIXEL / "tree" / f"{k}.png") for k in ("idle0", "idle1", "prep0", "blast0")}
+    tw = max(len(g[0]) for g in tree.values()) * S
+    th = max(len(g) for g in tree.values()) * S
+    tx, ty = W - m - tw + 6, h - 22 - th          # esquina superior izquierda del árbol
+    mouth_x, mouth_y = tx + 8, ty + th * 0.55      # boca (el árbol mira a la izquierda)
+
+    def hit(cx: float) -> str:
+        return f"{TREE_EMIT + max(mouth_x - cx, 0) / WAVE_SPEED:.2f}s"
+
+    def quake(body: str, cx: float) -> str:
+        return f'<g class="q" style="animation-delay:{hit(cx)}">{body}</g>'
+
     b = [frame(t, 0, 0, W, h, grid=False)]
     b.append(label("Lenguajes", m, 62, t["muted"], 12))
     x = m + 130
     for lang in LANGUAGES:
-        b.append(text(SANS[600], lang, x, 64, 20, t["text"]))
-        x += SANS[600].width(lang, 20) + 28
+        lw = SANS[600].width(lang, 20)
+        b.append(quake(text(SANS[600], lang, x, 64, 20, t["text"]), x + lw / 2))
+        x += lw + 28
     spine = m + 6
     y0 = top + row_h / 2 - 4
     b.append(f'<path d="M{spine} {_num(y0)}V{_num(y0 + row_h * (len(STACK) - 1))}" stroke="{t["accent"]}" stroke-opacity=".45" stroke-width="1.5"/>')
     for i, (layer, items) in enumerate(STACK):
         ry = top + i * row_h
         cy = ry + row_h / 2 - 4
-        b.append(f'<path d="M{m} {ry}H{W - m}" stroke="{t["border"]}"/>')
+        b.append(f'<path d="M{m} {ry}H{tx - 20}" stroke="{t["border"]}"/>')
         b.append(f'<circle cx="{spine}" cy="{_num(cy)}" r="5" fill="{t["bg"]}" stroke="{t["accent"]}" stroke-width="1.5"/>')
         b.append(label(layer, m + 26, cy + 5, t["accent_text"], 13))
         x = m + 300
         for item in items:
             body, cw = chip(t, item, x, cy - 15, 14)
-            b.append(body)
+            b.append(quake(body, x + cw / 2))
             x += cw + 10
+
+    # onda: tres arcos de bloques pixel que cruzan los pisos hacia la izquierda
+    mid = top + row_h * len(STACK) / 2 - 4
+    blocks = []
+    for k, color in enumerate(("#E6F3F6", "#22C3D6", "#22C3D6")):
+        R, span = 300 + k * 24, 210
+        edge = (R * R - span * span) ** 0.5
+        for yy in range(-span, span + 1, 6):
+            xx = -((R * R - yy * yy) ** 0.5 - edge) - k * 24
+            blocks.append(f'<rect x="{round(xx / 6) * 6}" y="{yy}" width="6" height="6" fill="{color}"/>')
+    travel = mouth_x - (m + 260)
+    b.append(f'<clipPath id="cw"><rect width="{W}" height="{h}" rx="18"/></clipPath>'
+             f'<g clip-path="url(#cw)"><g transform="translate({_num(mouth_x)} {_num(mid)})">'
+             f'<g class="wave" shape-rendering="crispEdges">{"".join(blocks)}</g></g></g>')
+
+    # árbol (espejado para mirar a la izquierda)
+    def sprite(k: str, cls: str) -> str:
+        g = tree[k]
+        gw, gh = len(g[0]) * S, len(g) * S
+        ox = tx + (tw - gw) / 2
+        oy = ty + th - gh
+        return (f'<g class="{cls}" transform="translate({_num(ox + gw)} {_num(oy)}) scale(-1 1)">'
+                f'{pixel.to_paths(g, S)}</g>')
+
+    b.append(f'<rect x="{tx + 14}" y="{ty + th - 4}" width="{tw - 28}" height="8" rx="4" fill="#000" fill-opacity=".35"/>')
+    b.append(f'<g shape-rendering="crispEdges"><g class="t-idle">{sprite("idle0", "ti0")}{sprite("idle1", "ti1")}</g>'
+             f'{sprite("prep0", "t-prep")}{sprite("blast0", "t-blast")}</g>')
+
+    P, e = TREE_PERIOD, TREE_EMIT
+    end = e + travel / WAVE_SPEED
+    css = [
+        pixel.cycle_css("ti", 2, 0.5),
+        pixel.vis_css("t-idle", [(0, e - 0.6), (e + 1.3, P)], P, base=1),
+        pixel.vis_css("t-prep", [(e - 0.6, e)], P),
+        pixel.vis_css("t-blast", [(e, e + 1.3)], P),
+        f".wave{{opacity:0;animation:wave {P}s linear infinite}}"
+        f"@keyframes wave{{0%,{100 * e / P:.2f}%{{transform:translateX(0);opacity:0}}"
+        f"{100 * (e + 0.1) / P:.2f}%{{opacity:.95}}"
+        f"{100 * (end - 0.15) / P:.2f}%{{opacity:.85}}"
+        f"{100 * end / P:.2f}%{{transform:translateX(-{_num(travel)}px);opacity:0}}100%{{opacity:0}}}}",
+        ".q{transform-box:fill-box;transform-origin:50% 100%;animation:quake " + f"{P}s linear infinite" + "}"
+        "@keyframes quake{0%{transform:none}1.2%{transform:translate(-3px,0) rotate(-2deg)}"
+        "2.4%{transform:translate(3px,-1px) rotate(1.6deg)}3.6%{transform:translate(-2px,0) rotate(-1deg)}"
+        "4.8%{transform:translate(1px,0) rotate(.5deg)}6%,100%{transform:none}}",
+    ]
     title = "Stack por capas. Lenguajes: " + ", ".join(LANGUAGES) + ". " + ". ".join(
         f"{layer}: {', '.join(items)}" for layer, items in STACK) + "."
-    return svg(W, h, title, "".join(b))
+    return svg(W, h, title, "".join(b), "".join(css))
 
 
 def process(t: dict) -> str:
-    h, m = 260, 48
+    """Nivel de videojuego con las 4 zonas; el texto va en el suelo."""
+    h = 462
+    ground = 334
     period = 8.0
-    last_w = 250  # ancho de la última columna
-    col = (W - 2 * m - last_w) / 3
-    y = 72
-    b = [frame(t, 0, 0, W, h, grid=False)]
-    x0, x1 = m + 20, m + col * 3 + 20
-    length = x1 - x0
-    b.append(f'<path d="M{x0} {y}H{_num(x1)}" stroke="{t["border"]}" stroke-width="2"/>')
-    b.append(f'<path class="flow" d="M{x0} {y}H{_num(x1)}" stroke="{t["accent"]}" stroke-width="2" stroke-linecap="round"/>')
-    for i, (num, name, desc) in enumerate(STEPS):
-        nx = m + col * i + 20
-        at = period * (nx - x0) / length
-        b.append(f'<circle cx="{_num(nx)}" cy="{y}" r="9" fill="{t["bg"]}" stroke="{t["accent"]}" stroke-width="2"/>')
-        b.append(f'<circle class="lit" style="--p:{period}s;animation-delay:{lit_delay(at, period)}" '
-                 f'cx="{_num(nx)}" cy="{y}" r="5" fill="{t["accent"]}"/>')
-        tx = nx - 9
-        b.append(label(num, tx, y + 50, t["accent_text"], 13))
-        b.append(text(SANS[600], name, tx, y + 86, 26, t["text"]))
-        for j, line in enumerate(SANS[400].wrap(desc, 17, (last_w if i == 3 else col) - 36)):
-            b.append(text(SANS[400], line, tx, y + 118 + j * 24, 17, t["muted"]))
+    cols = [44, 334, 636, 928]
+    col_w = 250
+    b = [f'<clipPath id="c"><rect width="{W}" height="{h}" rx="18"/></clipPath><g clip-path="url(#c)">',
+         scene("process", 0, 0, W, h),
+         '<circle class="glow" cx="159" cy="186" r="46" fill="#F2E3A0"/>']
+    x0, x1 = cols[0] + 6, cols[-1] + 6
+    b.append(f'<path class="flow" d="M{x0} {ground}H{x1}" stroke="#22C3D6" stroke-width="3" stroke-linecap="square"/>')
+    for (num, name, desc), cx in zip(STEPS, cols):
+        at = period * (cx - cols[0]) / (x1 - x0)
+        b.append(f'<rect x="{cx}" y="{ground - 6}" width="12" height="12" fill="#0B1E2B" stroke="#22C3D6" stroke-width="2"/>')
+        b.append(f'<rect class="lit" style="--p:{period}s;animation-delay:{lit_delay(at, period)}" '
+                 f'x="{cx + 3}" y="{ground - 3}" width="6" height="6" fill="#22C3D6"/>')
+        b.append(label(num, cx, ground + 42, "#22C3D6", 13))
+        b.append(text(SANS[600], name, cx + 30, ground + 43, 24, "#E6F3F6"))
+        for j, line in enumerate(SANS[400].wrap(desc, 16, col_w)):
+            b.append(text(SANS[400], line, cx, ground + 70 + j * 22, 16, "#8EA8B5"))
+    b.append("</g>")
+    b.append(f'<rect x=".5" y=".5" width="{W - 1}" height="{h - 1}" rx="17.5" stroke="{t["border"]}"/>' + corners(W, h))
+    css = (flow_css(x1 - x0, period) + ".glow{opacity:.1;animation:glow 3s ease-in-out infinite}"
+           "@keyframes glow{50%{opacity:.28}}")
     title = "Cómo trabajo: " + " → ".join(f"{n}: {d}" for _, n, d in STEPS)
-    return svg(W, h, title, "".join(b), flow_css(length, period))
+    return svg(W, h, title, "".join(b), css)
 
 
 def cta(t: dict) -> str:
-    h, m = 230, 56
-    b = [frame(t, 0, 0, W, h)]
-    b.append(label("¿Tienes un proyecto?", m, 70, t["accent_text"], 13))
-    b.append(text(SANS[700], "Lo llevamos de la idea a producción.", m, 122, 40, t["text"], track=-0.01))
-    b.append(text(SANS[400], "Requerimientos, arquitectura, desarrollo web y móvil, integraciones y despliegue.", m, 160, 19, t["muted"]))
-    b.append(label("Bogotá (UTC−5): mis mañanas coinciden con tu tarde en España", m, 196, t["muted"], 12, w=400))
-    bw, bh = 220, 56
-    bx, by = W - m - bw, 78
-    b.append(f'<rect x="{bx}" y="{by}" width="{bw}" height="{bh}" rx="{bh / 2}" fill="{t["accent"]}"/>')
-    b.append(text(SANS[600], "Escríbeme  →", bx + bw / 2, by + bh / 2 + 7, 20, t["on_accent"], anchor="middle"))
-    return svg(W, h, "¿Tienes un proyecto? Lo llevamos de la idea a producción. Escríbeme.", "".join(b))
+    """Cierre: Bogotá al amanecer, el cohete ya va en el cielo."""
+    h, m = 489, 56
+    b = [f'<clipPath id="c"><rect width="{W}" height="{h}" rx="18"/></clipPath><g clip-path="url(#c)">',
+         scene("cta", 0, 0, W, h)]
+    for i, (sx, sy) in enumerate([(612, 70), (700, 40), (540, 120), (880, 96), (980, 30), (430, 40)]):
+        b.append(f'<rect class="tw" style="animation-delay:-{i * 0.7:.1f}s" x="{sx}" y="{sy}" width="3" height="3" fill="#9FE7F0"/>')
+    b.append("</g>")
+    b.append(f'<rect x=".5" y=".5" width="{W - 1}" height="{h - 1}" rx="17.5" stroke="{t["border"]}"/>' + corners(W, h))
+    b.append(shadowed(MONO[500], "¿TIENES UN PROYECTO?", m, 74, 14, "#22C3D6", track=0.08))
+    b.append(shadowed(SANS[700], "Lo llevamos de la idea", m, 132, 44, "#E6F3F6", track=-0.01))
+    b.append(shadowed(SANS[700], "a producción.", m, 182, 44, "#E6F3F6", track=-0.01))
+    b.append(shadowed(SANS[400], "Requerimientos, arquitectura, desarrollo web y móvil,", m, 224, 19, "#B9CFD8"))
+    b.append(shadowed(SANS[400], "integraciones y despliegue.", m, 250, 19, "#B9CFD8"))
+    bw, bh, by = 220, 56, 280
+    b.append(f'<rect x="{m + 4}" y="{by + 4}" width="{bw}" height="{bh}" fill="#06121B"/>')
+    b.append(f'<rect x="{m}" y="{by}" width="{bw}" height="{bh}" fill="#22C3D6"/>')
+    b.append(text(SANS[600], "Escríbeme  →", m + bw / 2, by + bh / 2 + 7, 20, "#0B1E2B", anchor="middle"))
+    b.append(label("Bogotá, Colombia  ·  Trabajo en remoto con clientes de cualquier país", m, h - 22, "#8EA8B5", 12, w=400))
+    css = ".tw{opacity:.2;animation:tw 4.2s steps(1) infinite}@keyframes tw{0%{opacity:.2}50%{opacity:1}60%{opacity:.2}}"
+    return svg(W, h, "¿Tienes un proyecto? Lo llevamos de la idea a producción. Escríbeme.", "".join(b), css)
 
-
-# ---------------------------------------------------------------- plantilla de estadísticas
 
 STATS = [
     ("contributions", "contribuciones en 12 meses"),
@@ -492,24 +710,68 @@ STATS = [
     ("longestStreak", "racha más larga, en días"),
     ("bestWeek", "contribuciones en la mejor semana"),
 ]
-STATS_H, STATS_M, STATS_VSIZE = 190, 48, 48
+STATS_ART = 399  # alto de la escena de la oficina sobre las cifras
+STATS_H, STATS_M, STATS_VSIZE = STATS_ART + 190, 48, 48
 
 
 def stats_template(t: dict) -> tuple[str, list[dict]]:
     """Plantilla con marcadores; scripts/stats.mjs inserta las cifras."""
     col = (W - 2 * STATS_M) / len(STATS)
-    b = [frame(t, 0, 0, W, STATS_H, grid=False)]
+    top = STATS_ART
+    b = [f'<clipPath id="c"><rect width="{W}" height="{STATS_H}" rx="18"/></clipPath><g clip-path="url(#c)">',
+         f'<rect width="{W}" height="{STATS_H}" fill="{t["bg"]}"/>', scene("office", 0, 0, W, top),
+         f'<path d="M0 {top}H{W}" stroke="#22C3D6" stroke-opacity=".5"/></g>',
+         f'<rect x=".5" y=".5" width="{W - 1}" height="{STATS_H - 1}" rx="17.5" stroke="{t["border"]}"/>', corners(W, STATS_H)]
     slots = []
     for i, (key, desc) in enumerate(STATS):
         x = STATS_M + col * i
-        b.append(f'<rect x="{_num(x)}" y="38" width="28" height="3" fill="{t["accent"]}"/>')
+        b.append(f'<rect x="{_num(x)}" y="{top + 38}" width="28" height="3" fill="{t["accent"]}"/>')
         b.append(f"<!--{key}-->")
-        slots.append(dict(key=key, x=round(x, 1), y=96))
-        b.append(text(SANS[400], desc, x, 128, 17, t["muted"]))
+        slots.append(dict(key=key, x=round(x, 1), y=top + 96))
+        b.append(text(SANS[400], desc, x, top + 128, 17, t["muted"]))
         if i:
-            b.append(f'<path d="M{_num(x - 24)} 42V140" stroke="{t["border"]}"/>')
+            b.append(f'<path d="M{_num(x - 24)} {top + 42}V{top + 140}" stroke="{t["border"]}"/>')
     b.append("<!--updated-->")
-    return svg(W, STATS_H, "__TITLE__", "".join(b)), slots
+    seal_svg, seal_css = seal(top)
+    b.append(seal_svg)
+    return svg(W, STATS_H, "__TITLE__", "".join(b), seal_css + "/*MOOD*/"), slots
+
+
+SEAL_PERIOD = 6.0
+SEAL_REST = 3.6   # segundos en reposo antes de cada acción
+SEAL_X = 120      # bajo el escritorio, mirando hacia la ventana
+
+
+def seal(floor: float) -> tuple[str, str]:
+    """León marino en el suelo de la oficina. Su ánimo lo elige stats.mjs con
+    los datos reales: celebra con la pelota en una gran semana, aplaude si hubo
+    actividad reciente y saca la lengua, tranquilo, si no la hubo."""
+    import pixel
+
+    S = 3
+    names ={"idle": 2, "clap": 3, "happy": 3, "blep": 3}
+    grids = {f"{k}{i}": pixel.from_png(PIXEL / "seal" / f"{k}{i}.png") for k, n in names.items() for i in range(n)}
+    sw = max(len(g[0]) for g in grids.values()) * S
+
+    def frame_svg(key: str, cls: str) -> str:
+        g = grids[key]
+        gw, gh = len(g[0]) * S, len(g) * S
+        return (f'<g class="{cls}" transform="translate({_num(SEAL_X + (sw - gw) / 2)} {_num(floor - 4 - gh)})">'
+                f'{pixel.to_paths(g, S)}</g>')
+
+    out = [f'<rect x="{SEAL_X + 24}" y="{floor - 8}" width="{sw - 40}" height="8" rx="4" fill="#000" fill-opacity=".4"/>',
+           '<g shape-rendering="crispEdges">',
+           f'<g class="sl-idle">{frame_svg("idle0", "si0")}{frame_svg("idle1", "si1")}</g>']
+    for mood, n in (("clap", 3), ("happy", 3), ("blep", 3)):
+        inner = "".join(frame_svg(f"{mood}{i}", f"s{mood[0]}{i}") for i in range(n))
+        out.append(f'<g class="sl-act mood-{mood}">{inner}</g>')
+    out.append("</g>")
+    P, r = SEAL_PERIOD, SEAL_REST
+    css = (pixel.cycle_css("si", 2, 0.9) + pixel.cycle_css("sc", 3, 0.36) + pixel.cycle_css("sh", 3, 0.6)
+           + pixel.cycle_css("sb", 3, 0.75)
+           + pixel.vis_css("sl-idle", [(0, r)], P, base=1) + pixel.vis_css("sl-act", [(r, P)], P)
+           + ".mood-clap,.mood-happy,.mood-blep{display:none}")
+    return "".join(out), css
 
 
 def glyph_table(face: Face, chars: str, size: float) -> dict:
@@ -538,10 +800,14 @@ def main() -> None:
     card_w = 600
     layouts = [card_layout(p, card_w - 16, 32) for p in PROJECTS]
     card_h = max(card_height(l) for l in layouts)
-    magnor_lay = card_layout(MAGNOR, W - 16, 32)
+    magnor_lay = card_layout(MAGNOR, W - 16, 32, side=SIDE_ART_W)
     magnor_h = card_height(magnor_lay)
+    import build_pixel
     for name, t in THEMES.items():
-        write("banner", name, banner(t))
+        write("banner", name, build_pixel.banner(t))
+        write("intro", name, intro(t))
+        for key, label_text, _ in LINKS:
+            write(f"btn-{key}", name, menu_button(t, label_text))
         write("impact", name, impact(t))
         for p, lay in zip(PROJECTS, layouts):
             write(f"card-{p['slug']}", name, card(t, p, card_w, card_h, lay))
