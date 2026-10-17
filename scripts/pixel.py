@@ -62,3 +62,19 @@ def scatter(g: Grid, rng: random.Random, n: int, box: tuple[int, int, int, int],
             continue
         if g[y][x] is not None:
             g[y][x] = color
+
+
+def from_png(path) -> Grid:
+    """Lee un PNG con transparencia como cuadrícula de colores hex (None = vacío)."""
+    from PIL import Image
+
+    im = Image.open(path).convert("RGBA")
+    w, h = im.size
+    data = im.load()
+    return [[("#%02X%02X%02X" % data[x, y][:3]) if data[x, y][3] > 127 else None for x in range(w)] for y in range(h)]
+
+
+def png_data_uri(path) -> str:
+    import base64
+
+    return "data:image/png;base64," + base64.b64encode(open(path, "rb").read()).decode()

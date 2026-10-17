@@ -1,158 +1,155 @@
-"""Banner en pixel art: skyline de Bogotá con Monserrate, personaje que camina
-por los 4 pasos y cohete que despega al llegar ("De la idea a producción").
+"""Banner en pixel art: Bogotá de noche y el personaje recorriendo los 4 pasos.
 
-Los sprites están en scripts/sprites.py; para cambiar de personaje solo hay que
-sustituir ese archivo. Uso: lo invoca build_assets.py.
+Historia (un ciclo):
+  camina → 01 Entender (piensa, se enciende la bombilla) → 02 Diseñar (plano)
+  → 03 Construir (se sienta a programar) → 04 Desplegar (salta de alegría y
+  despega el cohete) → vuelve a empezar.
+
+El fondo va incrustado como PNG nativo escalado con image-rendering: pixelated;
+el personaje y el cohete son trazos SVG (nítidos en cualquier pantalla).
+Recursos en assets/pixel/ (scripts/tools/make_pixel_assets.py). Requiere Pillow.
 """
 
 from __future__ import annotations
 
-import random
+from pathlib import Path
 
 import build_assets as ba
 import pixel as px
 import sprites as sp
 
-S = 4                   # píxeles de pantalla por celda
-GW, GH = 300, 115       # cuadrícula: 1200 x 460
-GROUND = 92             # fila donde pisa el personaje
-PERIOD = 14.0           # segundos del ciclo completo
+PIX = Path(__file__).resolve().parent.parent / "assets" / "pixel"
+S = 3                 # píxeles de pantalla por píxel nativo
+GROUND = 145          # fila nativa del suelo
+SPEED = 130           # px/s caminando
+FLAME = [
+    [".....ryyr.....", ".....ryyr.....", "......yy......", "......rr......", ".......r......"],
+    ["....ryyyyr....", ".....ryyr.....", ".....ryyr.....", "......yy......", "......r......."],
+]
 
 
-def sky(g: px.Grid) -> None:
-    bands = [(0, "#08161F"), (12, "#0A1B27"), (24, "#0B1F2D"), (36, "#0D2536"),
-             (47, "#102F41"), (57, "#143C4F"), (65, "#1A5063"), (72, "#1B5F72"), (78, "#1F8296")]
-    for y in range(GH):
-        color = [c for start, c in bands if y >= start][-1]
-        px.rect(g, 0, y, GW, 1, color)
+def frames(prefix: str) -> list[px.Grid]:
+    return [px.from_png(p) for p in sorted((PIX / "hero").glob(f"{prefix}*.png"))]
 
 
-def stars(g: px.Grid, rng: random.Random) -> None:
-    px.scatter(g, rng, 150, (0, 2, GW, 52), "#2B5B73", avoid=(10, 12, 295, 46))
-    px.scatter(g, rng, 26, (0, 2, GW, 40), "#9FE7F0", avoid=(10, 12, 295, 46))
+def cycle_css(cls: str, n: int, dur: float) -> str:
+    """Cicla n fotogramas (.cls0 … .cls{n-1}) con opacidad por pasos."""
+    out = [f".{cls}{i}{{opacity:{1 if i == 0 else 0};animation:{cls}{i} {dur}s steps(1) infinite}}" for i in range(n)]
+    for i in range(n):
+        a, b = 100 * i / n, 100 * (i + 1) / n
+        kf = f"0%{{opacity:0}}{a:.2f}%{{opacity:1}}{b:.2f}%{{opacity:0}}" if i else f"0%{{opacity:1}}{b:.2f}%{{opacity:0}}"
+        out.append(f"@keyframes {cls}{i}{{{kf}}}")
+    return "".join(out)
 
 
-def monserrate(g: px.Grid) -> None:
-    peak_x, peak_y = 246, 42
-    for x in range(180, GW):
-        slope = 0.62 if x < peak_x else 0.45
-        top = int(peak_y + abs(x - peak_x) * slope)
-        px.rect(g, x, top, 1, GROUND - top, "#14405A")
-        g[top][x] = "#2A7C96"  # filo de la cresta
-        if top + 1 < GROUND:
-            g[top + 1][x] = "#1D5C75"
-    # ermita en la cumbre
-    px.stamp(g, sp.CHURCH, sp.CHURCH_PAL, peak_x - 3, peak_y - 6)
-
-
-def skyline(g: px.Grid, rng: random.Random) -> None:
-    x = 0
-    while x < GW:  # fondo
-        w, h = rng.randint(9, 16), rng.randint(22, 40) if x > 120 else rng.randint(14, 24)
-        px.rect(g, x, GROUND - h, w, h, "#0E2B3B")
-        x += w
-    x = rng.randint(0, 4)
-    while x < GW:  # frente, con ventanas
-        w, h = rng.randint(8, 14), rng.randint(10, 22) if x > 120 else rng.randint(6, 14)
-        top = GROUND - h
-        px.rect(g, x, top, w, h, "#071520")
-        for wy in range(top + 2, GROUND - 2, 3):
-            for wx in range(x + 1, x + w - 1, 2):
-                r = rng.random()
-                if r < 0.22:
-                    g[wy][wx] = "#22C3D6"
-                elif r < 0.30:
-                    g[wy][wx] = "#F2C14E"
-        x += w + rng.randint(0, 2)
-
-
-def ground(g: px.Grid) -> None:
-    px.rect(g, 0, GROUND, GW, GH - GROUND, "#0B1E2B")
-    px.rect(g, 0, GROUND, GW, 2, "#13738A")
-    px.rect(g, 0, GROUND + 2, GW, 1, "#0F4A5C")
-    for x in range(0, GW, 10):
-        px.rect(g, x + 2, GROUND + 6, 5, 1, "#12384B")
-
-
-def checkpoints(g: px.Grid, cols: list[int]) -> None:
-    for c in cols:
-        px.stamp(g, sp.FLAG, sp.FLAG_PAL, c, GROUND - len(sp.FLAG))
+def timeline(stops: list[tuple[float, float]], start_x: float) -> list[tuple[float, float]]:
+    """[(t, x)] alternando llegada y salida de cada parada."""
+    t, x = 0.0, start_x
+    events = [(0.0, x)]
+    for stop_x, wait in stops:
+        t += abs(stop_x - x) / SPEED
+        events.append((t, stop_x))
+        t += wait
+        events.append((t, stop_x))
+        x = stop_x
+    return events
 
 
 def banner(t: dict) -> str:
-    rng = random.Random(97)
-    W, H = GW * S, GH * S
-    g = px.new_grid(GW, GH)
-    sky(g)
-    stars(g, rng)
-    monserrate(g)
-    skyline(g, rng)
-    ground(g)
-
-    # texto (siempre sobre cielo oscuro, con los colores del tema oscuro)
-    d = ba.THEMES["dark"]
+    bg_w, bg_h = 400, 169
+    W, H = bg_w * S, bg_h * S
     m = 64
-    tag = "De la idea a producción."
-    tag_end = m + ba.SANS[600].width(tag, 34)
-    x0, x1 = tag_end + 90, 960
-    cols = [int((x0 + (x1 - x0) * i / 3) / S) for i in range(4)]
-    checkpoints(g, cols)
+    d = ba.THEMES["dark"]
 
-    out = [f'<clipPath id="c"><rect width="{W}" height="{H}" rx="18"/></clipPath>',
-           f'<g clip-path="url(#c)" shape-rendering="crispEdges">{px.to_paths(g, S)}</g>']
+    walk, typing = frames("walk"), frames("type")
+    stand = walk[0]
+    bulb = px.from_png(PIX / "hero" / "bulb0.png")
+    rocket = px.from_png(PIX / "rocket.png")
+    rx, ry = (int(v) for v in (PIX / "rocket.txt").read_text().split())
 
-    # rocket (despega al final del ciclo)
-    rx = 280 * S
-    rocket = px.sprite_svg(sp.ROCKET, sp.ROCKET_PAL, S)
-    flame = px.sprite_svg(sp.FLAME, sp.FLAME_PAL, S)
-    ry = (GROUND - len(sp.ROCKET)) * S
-    fl_y = len(sp.ROCKET) * S
-    out.append(f'<g shape-rendering="crispEdges" transform="translate({rx} {ry})"><g class="rocket">{rocket}'
-               f'<g class="flame" transform="translate(0 {fl_y})">{flame}</g></g></g>')
+    hero_w, hero_h = len(stand[0]) * S, len(stand) * S
+    feet = GROUND * S
+    stops_x = [470, 640, 810, rx * S - hero_w - 10]
+    events = timeline(list(zip(stops_x, [2.4, 1.8, 3.2, 3.6])), m)
+    period = round(events[-1][0] + 0.6, 2)
+    arrive = [events[i][0] for i in range(1, len(events), 2)]
+    leave = [events[i][0] for i in range(2, len(events), 2)]
+    launch = arrive[3] + 0.7
+    lift_end = launch + 2.4
+    pct = lambda s: f"{100 * s / period:.3f}%"
 
-    # personaje: 4 fotogramas de caminata
-    cy = (GROUND - len(sp.WALK[0])) * S
-    start = m
-    frames = "".join(
-        f'<g class="w w{i}">{px.sprite_svg(sp.WALK[order], sp.HERO_PAL, S)}</g>'
-        for i, order in enumerate((0, 1, 2, 1)))
-    shadow = f'<rect x="{3 * S}" y="{len(sp.WALK[0]) * S - 2}" width="{(len(sp.WALK[0][0]) - 6) * S}" height="4" fill="#000" fill-opacity=".35"/>'
-    out.append(f'<g shape-rendering="crispEdges" transform="translate({start} {cy})"><g class="walker">{shadow}{frames}</g></g>')
+    out = [f'<clipPath id="c"><rect width="{W}" height="{H}" rx="18"/></clipPath><g clip-path="url(#c)">',
+           f'<image href="{px.png_data_uri(PIX / "bg-bogota.png")}" width="{W}" height="{H}" '
+           f'preserveAspectRatio="none" style="image-rendering:crisp-edges;image-rendering:pixelated"/>']
+    for sx in stops_x:  # banderas de los 4 pasos
+        out.append(f'<g shape-rendering="crispEdges">{px.sprite_svg(sp.FLAG, sp.FLAG_PAL, S, sx + hero_w / 2 - 3, feet - len(sp.FLAG) * S)}</g>')
 
-    # marco del tema (borde y marcas de esquina)
+    flame = "".join(f'<g class="fl{i}">{px.sprite_svg(f, {"y": "#F2C14E", "r": "#F28C4B"}, S, 0, len(rocket) * S)}</g>'
+                    for i, f in enumerate(FLAME))
+    out.append(f'<g shape-rendering="crispEdges" transform="translate({rx * S} {ry * S})"><g class="rocket">'
+               f'{px.to_paths(rocket, S)}<g class="flame">{flame}</g></g></g>')
+
+    walk_svg = "".join(f'<g class="wk{i}">{px.to_paths(g, S)}</g>' for i, g in enumerate(walk))
+    type_w = len(typing[0][0]) * S
+    type_svg = "".join(f'<g class="ty{i}">{px.to_paths(g, S, -type_w * 0.3, hero_h - len(g) * S)}</g>'
+                       for i, g in enumerate(typing))
+    bulb_svg = px.to_paths(bulb, S, hero_w / 2 - len(bulb[0]) * S / 2 + 6, -len(bulb) * S - 4)
+    blue_svg = px.sprite_svg(sp.BLUEPRINT, sp.BLUEPRINT_PAL, S, hero_w / 2 - 12, -len(sp.BLUEPRINT) * S - 8)
+    shadow = f'<rect x="{S * 2}" y="{hero_h - 3}" width="{hero_w - S * 4}" height="6" rx="3" fill="#000" fill-opacity=".35"/>'
+    out.append(f'<g shape-rendering="crispEdges" transform="translate({m} {feet - hero_h})"><g class="hero">'
+               f'<g class="body">{shadow}<g class="hop"><g class="p-walk">{walk_svg}</g>'
+               f'<g class="p-stand">{px.to_paths(stand, S)}</g></g></g>'
+               f'<g class="p-type">{type_svg}</g><g class="p-bulb">{bulb_svg}</g><g class="p-blue">{blue_svg}</g></g></g>')
+    out.append("</g>")
+
     out.append(f'<rect x=".5" y=".5" width="{W - 1}" height="{H - 1}" rx="17.5" stroke="{t["border"]}"/>')
     k, o = 14, 10
-    out.append(f'<path d="M{o} {o + k}V{o}H{o + k}M{W - o - k} {o}H{W - o}V{o + k}M{W - o} {H - o - k}V{H - o}H{W - o - k}M{o + k} {H - o}H{o}V{H - o - k}" '
-               f'stroke="#22C3D6" stroke-width="1.5" stroke-opacity=".7"/>')
+    out.append(f'<path d="M{o} {o + k}V{o}H{o + k}M{W - o - k} {o}H{W - o}V{o + k}M{W - o} {H - o - k}V{H - o}H{W - o - k}'
+               f'M{o + k} {H - o}H{o}V{H - o - k}" stroke="#22C3D6" stroke-width="1.5" stroke-opacity=".7"/>')
 
-    out.append(ba.label("Bogotá, Colombia  ·  Software a medida y productos propios", m, 82, d["muted"], 14))
-    out.append(ba.label("4.711° N  74.072° W", W - m, 82, d["muted"], 14, anchor="end", w=400))
-    out.append(ba.text(ba.SANS[700], "Jesús Nicolás Pachón Suárez", m, 160, 62, d["text"], track=-0.01))
+    def shadowed(face, s, x, y, size, fill, **kw):
+        """Texto con sombra en escalón, al estilo pixel."""
+        return ba.text(face, s, x + 3, y + 3, size, "#06121B", **kw) + ba.text(face, s, x, y, size, fill, **kw)
+
+    out.append(shadowed(ba.MONO[500], "BOGOTÁ, COLOMBIA  ·  SOFTWARE A MEDIDA Y PRODUCTOS PROPIOS", m, 76, 14, d["muted"], track=0.08))
+    out.append(shadowed(ba.MONO[400], "4.711° N  74.072° W", W - m, 76, 14, d["muted"], anchor="end", track=0.08))
+    out.append(shadowed(ba.SANS[700], "Jesús Nicolás Pachón Suárez", m, 150, 60, d["text"], track=-0.01))
     role = "Cofundador y COO de Magnor"
-    out.append(ba.text(ba.MONO[500], role, m, 210, 24, d["accent_text"]))
+    out.append(shadowed(ba.MONO[500], role, m, 196, 24, d["accent_text"]))
     cx = m + ba.MONO[500].width(role, 24) + 8
-    out.append(f'<rect class="cur" x="{ba._num(cx)}" y="190" width="12" height="24" fill="#22C3D6"/>')
-    out.append(ba.text(ba.SANS[600], tag, m, 438, 34, d["text"]))
-    for c, (num, name, _) in zip(cols, ba.STEPS):
-        out.append(ba.label(f"{num} {name}", c * S + 4, 412, d["muted"], 12, anchor="middle"))
+    out.append(f'<rect class="cur" x="{ba._num(cx)}" y="176" width="12" height="24" fill="#22C3D6"/>')
+    out.append(ba.text(ba.SANS[600], "De la idea a producción.", m, feet + 50, 28, d["text"]))
+    for sx, (num, name, _) in zip(stops_x, ba.STEPS):
+        out.append(ba.label(f"{num} {name}", sx + hero_w / 2, feet + 30, d["muted"], 12, anchor="middle"))
 
-    travel = (278 * S) - start - len(sp.WALK[0][0]) * S
-    css = (
-        ".w{opacity:0}.w0{opacity:1}"
-        ".w{animation:step .8s steps(1) infinite}"
-        ".w0{animation-name:s0}.w1{animation-name:s1}.w2{animation-name:s2}.w3{animation-name:s3}"
-        "@keyframes s0{0%{opacity:1}25%,100%{opacity:0}}"
-        "@keyframes s1{0%,24.9%{opacity:0}25%{opacity:1}50%,100%{opacity:0}}"
-        "@keyframes s2{0%,49.9%{opacity:0}50%{opacity:1}75%,100%{opacity:0}}"
-        "@keyframes s3{0%,74.9%{opacity:0}75%{opacity:1}100%{opacity:0}}"
-        f".walker{{animation:walk {PERIOD}s linear infinite}}"
-        f"@keyframes walk{{0%{{transform:translateX(0);opacity:1}}72%{{transform:translateX({travel}px);opacity:1}}"
-        f"73%,100%{{transform:translateX({travel}px);opacity:0}}}}"
-        f".rocket{{animation:lift {PERIOD}s ease-in infinite}}"
-        f"@keyframes lift{{0%,74%{{transform:translateY(0);opacity:1}}95%{{transform:translateY(-440px);opacity:1}}96%,100%{{transform:translateY(-440px);opacity:0}}}}"
-        f".flame{{opacity:0;animation:fire {PERIOD}s steps(1) infinite}}"
-        "@keyframes fire{0%,74%{opacity:0}75%,95%{opacity:1}96%,100%{opacity:0}}"
-        ".cur{animation:blink 1.1s steps(1) infinite}@keyframes blink{50%{opacity:0}}"
-    )
+    # --- animación
+    css = [cycle_css("wk", len(walk), 0.6), cycle_css("ty", len(typing), 0.45), cycle_css("fl", 2, 0.16),
+           ".cur{animation:blink 1.1s steps(1) infinite}@keyframes blink{50%{opacity:0}}"]
+    move = "".join(f"{pct(tt)}{{transform:translateX({x - m:.1f}px)}}" for tt, x in events)
+    css.append(f".hero{{animation:path {period}s linear infinite}}@keyframes path{{{move}100%{{transform:translateX({events[-1][1] - m:.1f}px)}}}}")
+    css.append(f".hero{{opacity:1}}.body{{animation:fade {period}s steps(1) infinite}}"
+               f"@keyframes fade{{0%{{opacity:1}}{pct(arrive[2])}{{opacity:0}}{pct(leave[2])}{{opacity:1}}{pct(events[-1][0])}{{opacity:0}}}}")
+
+    def window(cls: str, spans: list[tuple[float, float]], base: int = 0) -> str:
+        kf = "".join(f"{pct(a)}{{opacity:1}}{pct(b)}{{opacity:0}}" for a, b in spans)
+        return f".{cls}{{opacity:{base};animation:v-{cls} {period}s steps(1) infinite}}@keyframes v-{cls}{{0%{{opacity:0}}{kf}}}"
+
+    walking = [(leave[i - 1] if i else 0.0, arrive[i]) for i in range(4)]
+    css.append(window("p-walk", walking))
+    css.append(window("p-stand", [(arrive[0], leave[0]), (arrive[1], leave[1]), (arrive[3], events[-1][0])], base=1))
+    css.append(window("p-type", [(arrive[2], leave[2])]))
+    css.append(window("p-bulb", [(arrive[0] + 0.6, leave[0])]))
+    css.append(window("p-blue", [(arrive[1] + 0.3, leave[1])]))
+    hops = "".join(f"{pct(launch - 0.3 + j * 0.5)}{{transform:translateY(0)}}{pct(launch - 0.05 + j * 0.5)}{{transform:translateY(-15px)}}"
+                   for j in range(5))
+    css.append(f".hop{{animation:hop {period}s linear infinite}}@keyframes hop{{0%{{transform:translateY(0)}}{hops}"
+               f"{pct(launch + 2.3)},100%{{transform:translateY(0)}}}}")
+    up = ry * S + 140
+    css.append(f".rocket{{animation:lift {period}s ease-in infinite}}@keyframes lift{{0%,{pct(launch)}{{transform:translateY(0);opacity:1}}"
+               f"{pct(lift_end)}{{transform:translateY(-{up}px);opacity:1}}{pct(lift_end + 0.05)},{pct(period - 0.05)}{{transform:translateY(-{up}px);opacity:0}}"
+               f"100%{{transform:translateY(0);opacity:1}}}}")
+    css.append(f".flame{{opacity:0;animation:v-flame {period}s steps(1) infinite}}"
+               f"@keyframes v-flame{{0%{{opacity:0}}{pct(launch - 0.3)}{{opacity:1}}{pct(lift_end)}{{opacity:0}}}}")
+
     title = "Jesús Nicolás Pachón Suárez · Cofundador y COO de Magnor · De la idea a producción"
-    return ba.svg(W, H, title, "".join(out), css)
+    return ba.svg(W, H, title, "".join(out), "".join(css))
