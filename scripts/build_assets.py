@@ -439,21 +439,31 @@ LINKS = [
 ]
 
 
+def rpg_button(t: dict, label_text: str, x: float, y: float, size: float = 15, h: float = 52,
+               anchor: str = "start") -> tuple[str, float]:
+    """Botón de menú RPG: marco con esquinas en escalón y flecha de cursor,
+    como las opciones de diálogo de un videojuego de 16 bits. Devuelve (svg, ancho)."""
+    k = size / 15  # todo escala con el tamaño de letra
+    pad = 26 * k
+    w = round(MONO[500].width(label_text, size, 0.08) + pad * 2 + 30 * k)
+    if anchor == "end":
+        x -= w
+    cut, sw = 7 * k, 3 * k
+    d = (f"M{_num(x + cut)} {_num(y)}H{_num(x + w - cut)}L{_num(x + w)} {_num(y + cut)}V{_num(y + h - cut)}"
+         f"L{_num(x + w - cut)} {_num(y + h)}H{_num(x + cut)}L{_num(x)} {_num(y + h - cut)}V{_num(y + cut)}Z")
+    ay = y + h / 2
+    out = [f'<path d="{d}" fill="{t["bg"]}" stroke="#22C3D6" stroke-width="{_num(sw)}" shape-rendering="crispEdges"/>',
+           f'<path d="M{_num(x + pad - 14 * k)} {_num(ay - 7 * k)}l{_num(12 * k)} {_num(7 * k)}l{_num(-12 * k)} {_num(7 * k)}z" fill="#22C3D6"/>',
+           text(MONO[500], label_text, x + pad + 10 * k, ay + size * 0.36, size, t["text"], track=0.08)]
+    return "".join(out), w
+
+
 def menu_button(t: dict, label_text: str) -> str:
-    """Botón de menú RPG: marco con esquinas en escalón, como las opciones de
-    diálogo de un videojuego de 16 bits. Lleva un margen transparente a la
-    derecha para que varios botones seguidos no queden pegados."""
-    size, pad_x, h, gap = 15, 26, 52, 14
-    tw = MONO[500].width(label_text, size, 0.08)
-    w = round(tw + pad_x * 2 + 30)
-    cut = 7  # tamaño del corte en escalón de cada esquina
-    d = (f"M{cut} 0H{w - cut}L{w} {cut}V{h - cut}L{w - cut} {h}H{cut}L0 {h - cut}V{cut}Z")
-    b = [f'<path d="{d}" fill="{t["bg"]}" stroke="#22C3D6" stroke-width="3" shape-rendering="crispEdges"/>']
-    # flecha triangular, como el cursor de "continuar" del diálogo
-    ay = h / 2
-    b.append(f'<path d="M{pad_x - 14} {ay - 7}l12 7l-12 7z" fill="#22C3D6"/>')
-    b.append(text(MONO[500], label_text, pad_x + 10, ay + size * 0.36, size, t["text"], track=0.08))
-    return svg(w + gap, h, label_text, "".join(b))
+    """Botón suelto para los enlaces de contacto. Lleva un margen transparente
+    a la derecha para que varios botones seguidos no queden pegados."""
+    h, gap = 52, 14
+    body, w = rpg_button(t, label_text, 1.5, 1.5, 15, h - 3)
+    return svg(w + 3 + gap, h, label_text, body)
 
 
 def impact(t: dict) -> str:
@@ -536,7 +546,8 @@ def card(t: dict, p: dict, w: float, h: float, lay: dict) -> str:
     fy = o + ih - 52
     b.append(f'<path d="M{x0} {fy}H{xr}" stroke="{t["border"]}"/>')
     b.append(text(MONO[400], p["stack"], x0, fy + 30, 13, t["muted"]))
-    b.append(label("Ver caso →", xr, fy + 30, t["accent_text"], 13, anchor="end"))
+    btn, _ = rpg_button(t, "VER CASO", xr, fy + 8, 13, 36, anchor="end")
+    b.append(btn)
     title = f'{p["title"]}. {p["what"]} {p["result"]} Stack: {p["stack"]}.'
     return svg(w, h, title, "".join(b), PULSE_CSS if p["status"] else "")
 
@@ -836,6 +847,9 @@ def build_stats_templates() -> None:
     meta["glyphs"] = glyph_table(SANS[700], "0123456789.", STATS_VSIZE)
     meta["mono"] = glyph_table(MONO[400], "0123456789-", 12)
     meta["prefix_w"] = round(MONO[400].width("ACTUALIZADO ", 12, 0.08), 2)
+    import build_mobile  # plantilla móvil (stats-m-*.svg): mismas cifras, otra composición
+
+    meta["mobile"] = build_mobile.build_all(write)
     (TEMPLATES / "stats.json").write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
 
 
