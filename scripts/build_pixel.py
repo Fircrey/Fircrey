@@ -45,10 +45,13 @@ def timeline(stops: list[tuple[float, float]], start_x: float) -> list[tuple[flo
     return events
 
 
-def banner(t: dict) -> str:
+def banner(t: dict, mobile: bool = False) -> str:
+    """En móvil se recorta la parte derecha de la escena (Monserrate y el
+    cohete), el nombre va en dos líneas y el recorrido es más corto."""
     bg_w, bg_h = 400, 169
-    W, H = bg_w * S, bg_h * S
-    m = 64
+    cx0 = 200 if mobile else 0  # columna nativa donde empieza el encuadre
+    W, H = (bg_w - cx0) * S, bg_h * S
+    m = 24 if mobile else 64
     d = ba.THEMES["dark"]
 
     walk, typing = frames("walk"), frames("type")
@@ -59,7 +62,8 @@ def banner(t: dict) -> str:
 
     hero_w, hero_h = len(stand[0]) * S, len(stand) * S
     feet = GROUND * S
-    stops_x = [470, 640, 810, rx * S - hero_w - 10]
+    rxs = (rx - cx0) * S  # x del cohete dentro del encuadre
+    stops_x = [104, 196, 300, rxs - hero_w - 10] if mobile else [470, 640, 810, rxs - hero_w - 10]
     events = timeline(list(zip(stops_x, [2.4, 1.8, 3.2, 3.6])), m)
     period = round(events[-1][0] + 0.6, 2)
     arrive = [events[i][0] for i in range(1, len(events), 2)]
@@ -69,14 +73,14 @@ def banner(t: dict) -> str:
     pct = lambda s: f"{100 * s / period:.3f}%"
 
     out = [f'<clipPath id="c"><rect width="{W}" height="{H}" rx="18"/></clipPath><g clip-path="url(#c)">',
-           f'<image href="{px.png_data_uri(PIX / "bg-bogota.png")}" width="{W}" height="{H}" '
+           f'<image href="{px.png_data_uri(PIX / "bg-bogota.png")}" x="{-cx0 * S}" width="{bg_w * S}" height="{H}" '
            f'preserveAspectRatio="none" style="image-rendering:crisp-edges;image-rendering:pixelated"/>']
     for sx in stops_x:  # banderas de los 4 pasos
         out.append(f'<g shape-rendering="crispEdges">{px.sprite_svg(sp.FLAG, sp.FLAG_PAL, S, sx + hero_w / 2 - 3, feet - len(sp.FLAG) * S)}</g>')
 
     flame = "".join(f'<g class="fl{i}">{px.sprite_svg(f, {"y": "#F2C14E", "r": "#F28C4B"}, S, 0, len(rocket) * S)}</g>'
                     for i, f in enumerate(FLAME))
-    out.append(f'<g shape-rendering="crispEdges" transform="translate({rx * S} {ry * S})"><g class="rocket">'
+    out.append(f'<g shape-rendering="crispEdges" transform="translate({rxs} {ry * S})"><g class="rocket">'
                f'{px.to_paths(rocket, S)}<g class="flame">{flame}</g></g></g>')
 
     walk_svg = "".join(f'<g class="wk{i}">{px.to_paths(g, S)}</g>' for i, g in enumerate(walk))
@@ -101,16 +105,26 @@ def banner(t: dict) -> str:
         """Texto con sombra en escalón, al estilo pixel."""
         return ba.text(face, s, x + 3, y + 3, size, "#06121B", **kw) + ba.text(face, s, x, y, size, fill, **kw)
 
-    out.append(shadowed(ba.MONO[500], "BOGOTÁ, COLOMBIA  ·  SOFTWARE A MEDIDA Y PRODUCTOS PROPIOS", m, 76, 14, d["muted"], track=0.08))
-    out.append(shadowed(ba.MONO[400], "4.711° N  74.072° W", W - m, 76, 14, d["muted"], anchor="end", track=0.08))
-    out.append(shadowed(ba.SANS[700], "Jesús Nicolás Pachón Suárez", m, 150, 60, d["text"], track=-0.01))
     role = "Cofundador y COO de Magnor"
-    out.append(shadowed(ba.MONO[500], role, m, 196, 24, d["accent_text"]))
-    cx = m + ba.MONO[500].width(role, 24) + 8
-    out.append(f'<rect class="cur" x="{ba._num(cx)}" y="176" width="12" height="24" fill="#22C3D6"/>')
-    out.append(ba.text(ba.SANS[600], "De la idea a producción.", m, feet + 50, 28, d["text"]))
-    for sx, (num, name, _) in zip(stops_x, ba.STEPS):
-        out.append(ba.label(f"{num} {name}", sx + hero_w / 2, feet + 30, d["muted"], 12, anchor="middle"))
+    if mobile:
+        out.append(shadowed(ba.MONO[500], "BOGOTÁ, COLOMBIA", m, 58, 18, d["muted"], track=0.08))
+        out.append(shadowed(ba.SANS[700], "Jesús Nicolás", m, 118, 54, d["text"], track=-0.01))
+        out.append(shadowed(ba.SANS[700], "Pachón Suárez", m, 174, 54, d["text"], track=-0.01))
+        rsize, ry0 = 25, 214
+        out.append(shadowed(ba.MONO[500], role, m, ry0, rsize, d["accent_text"]))
+        cx = m + ba.MONO[500].width(role, rsize) + 6
+        out.append(f'<rect class="cur" x="{ba._num(cx)}" y="{ry0 - 20}" width="11" height="24" fill="#22C3D6"/>')
+        out.append(ba.text(ba.SANS[600], "De la idea a producción.", m, feet + 52, 30, d["text"]))
+    else:
+        out.append(shadowed(ba.MONO[500], "BOGOTÁ, COLOMBIA  ·  SOFTWARE A MEDIDA Y PRODUCTOS PROPIOS", m, 76, 14, d["muted"], track=0.08))
+        out.append(shadowed(ba.MONO[400], "4.711° N  74.072° W", W - m, 76, 14, d["muted"], anchor="end", track=0.08))
+        out.append(shadowed(ba.SANS[700], "Jesús Nicolás Pachón Suárez", m, 150, 60, d["text"], track=-0.01))
+        out.append(shadowed(ba.MONO[500], role, m, 196, 24, d["accent_text"]))
+        cx = m + ba.MONO[500].width(role, 24) + 8
+        out.append(f'<rect class="cur" x="{ba._num(cx)}" y="176" width="12" height="24" fill="#22C3D6"/>')
+        out.append(ba.text(ba.SANS[600], "De la idea a producción.", m, feet + 50, 28, d["text"]))
+        for sx, (num, name, _) in zip(stops_x, ba.STEPS):
+            out.append(ba.label(f"{num} {name}", sx + hero_w / 2, feet + 30, d["muted"], 12, anchor="middle"))
 
     # --- animación
     css = [px.cycle_css("wk", len(walk), 0.6), px.cycle_css("ty", len(typing), 0.45), px.cycle_css("fl", 2, 0.16),

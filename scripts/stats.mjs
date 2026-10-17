@@ -66,30 +66,34 @@ function mood({ lastWeek, bestWeek }) {
 // Separador de miles con punto, también en cifras de 4 dígitos (Intl es-ES no lo pone).
 const format = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 
-function glyphRun(table, str, x, y, fill, track = 0) {
+function glyphRun(table, str, x, y, fill, track = 0, scale = 1) {
   let cx = x;
   const parts = [];
   for (const ch of str) {
     const g = table[ch];
-    parts.push(`<path fill="${fill}" transform="translate(${cx.toFixed(1)} ${y})" d="${g.d}"/>`);
-    cx += g.w + track;
+    parts.push(`<path fill="${fill}" transform="translate(${cx.toFixed(1)} ${y}) scale(${scale})" d="${g.d}"/>`);
+    cx += (g.w + track) * scale;
   }
-  return { svg: parts.join(""), width: cx - x - track };
+  return { svg: parts.join(""), width: cx - x - track * scale };
 }
 
-function render(theme, meta, values, today) {
-  return readFile(new URL(`stats-${theme}.svg`, TEMPLATES), "utf8").then((tpl) => {
+// variant: "" (escritorio) o "-m" (móvil, con sus propias posiciones)
+function render(theme, meta, values, today, variant = "") {
+  return readFile(new URL(`stats${variant}-${theme}.svg`, TEMPLATES), "utf8").then((tpl) => {
     const colors = meta[theme];
-    for (const slot of meta.slots) {
+    const layout = variant ? meta.mobile : meta;
+    for (const slot of layout.slots) {
       const run = glyphRun(meta.glyphs, format(values[slot.key]), slot.x, slot.y, colors.text);
       tpl = tpl.replace(`<!--${slot.key}-->`, run.svg);
     }
-    const u = meta.updated;
-    const track = 0.08 * u.size;
-    const dateWidth = [...today].reduce((s, ch) => s + meta.mono[ch].w, 0) + track * (today.length - 1);
-    const start = u.x - meta.prefix_w - track - dateWidth;
-    const prefix = u.prefix.replace('fill="#000"', `fill="${colors.muted}" transform="translate(${start.toFixed(1)} ${u.y})"`);
-    const date = glyphRun(meta.mono, today, start + meta.prefix_w + track, u.y, colors.muted, track);
+    // la fecha se dibuja con glifos de 12 px; en móvil se escalan al tamaño pedido
+    const u = { ...meta.updated, ...layout.updated };
+    const k = u.size / meta.updated.size;
+    const track = 0.08 * meta.updated.size;
+    const dateWidth = ([...today].reduce((s, ch) => s + meta.mono[ch].w, 0) + track * (today.length - 1)) * k;
+    const start = u.x - (meta.prefix_w + track) * k - dateWidth;
+    const prefix = meta.updated.prefix.replace('fill="#000"', `fill="${colors.muted}" transform="translate(${start.toFixed(1)} ${u.y}) scale(${k})"`);
+    const date = glyphRun(meta.mono, today, start + (meta.prefix_w + track) * k, u.y, colors.muted, track, k);
     tpl = tpl.replace("<!--updated-->", prefix + date.svg);
     const title =
       `Actividad en GitHub: ${format(values.contributions)} contribuciones en 12 meses, ` +
@@ -104,6 +108,8 @@ const values = summarize(await fetchCalendar());
 const today = new Date().toISOString().slice(0, 10);
 await mkdir(OUT, { recursive: true });
 for (const theme of ["dark", "light"]) {
-  await writeFile(`${OUT}/stats-${theme}.svg`, await render(theme, meta, values, today));
+  for (const variant of ["", "-m"]) {
+    await writeFile(`${OUT}/stats${variant}-${theme}.svg`, await render(theme, meta, values, today, variant));
+  }
 }
 console.log({ ...values, mood: mood(values) });
