@@ -540,8 +540,9 @@ def main() -> None:
     card_h = max(card_height(l) for l in layouts)
     magnor_lay = card_layout(MAGNOR, W - 16, 32)
     magnor_h = card_height(magnor_lay)
+    import build_pixel
     for name, t in THEMES.items():
-        write("banner", name, banner(t))
+        write("banner", name, build_pixel.banner(t))
         write("impact", name, impact(t))
         for p, lay in zip(PROJECTS, layouts):
             write(f"card-{p['slug']}", name, card(t, p, card_w, card_h, lay))
