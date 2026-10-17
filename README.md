@@ -1,6 +1,6 @@
 <a href="https://magnor.tech"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/banner-dark.svg"><img alt="Jesús Nicolás Pachón Suárez · Cofundador y COO de Magnor · De la idea a producción" src="assets/banner-light.svg" width="100%"></picture></a>
 
-Soy cofundador y COO de **[Magnor](https://magnor.tech)**, una empresa de desarrollo de software con productos propios y proyectos a medida. Llevo proyectos de la idea a producción: requerimientos, arquitectura, desarrollo web y móvil, integraciones y despliegue. Estudio Ingeniería de Sistemas en la Universidad Jorge Tadeo Lozano (8.º semestre) y soy técnico en Electricidad y Electrónica.
+<picture><source media="(prefers-color-scheme: dark)" srcset="assets/intro-dark.svg"><img alt="Jesús Pachón: Soy cofundador y COO de Magnor, una empresa de desarrollo de software con productos propios y proyectos a medida. Llevo proyectos de la idea a producción: requerimientos, arquitectura, desarrollo web y móvil, integraciones y despliegue. Estudio Ingeniería de Sistemas en la Universidad Jorge Tadeo Lozano (8.º semestre) y soy técnico en Electricidad y Electrónica." src="assets/intro-light.svg" width="100%"></picture>
 
 **[magnor.tech](https://magnor.tech)** · [LinkedIn](https://www.linkedin.com/in/jesus-pachon-suarez) · [pachonsuarezjesus@gmail.com](mailto:pachonsuarezjesus@gmail.com)
 

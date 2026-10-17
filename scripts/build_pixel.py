@@ -32,16 +32,6 @@ def frames(prefix: str) -> list[px.Grid]:
     return [px.from_png(p) for p in sorted((PIX / "hero").glob(f"{prefix}*.png"))]
 
 
-def cycle_css(cls: str, n: int, dur: float) -> str:
-    """Cicla n fotogramas (.cls0 … .cls{n-1}) con opacidad por pasos."""
-    out = [f".{cls}{i}{{opacity:{1 if i == 0 else 0};animation:{cls}{i} {dur}s steps(1) infinite}}" for i in range(n)]
-    for i in range(n):
-        a, b = 100 * i / n, 100 * (i + 1) / n
-        kf = f"0%{{opacity:0}}{a:.2f}%{{opacity:1}}{b:.2f}%{{opacity:0}}" if i else f"0%{{opacity:1}}{b:.2f}%{{opacity:0}}"
-        out.append(f"@keyframes {cls}{i}{{{kf}}}")
-    return "".join(out)
-
-
 def timeline(stops: list[tuple[float, float]], start_x: float) -> list[tuple[float, float]]:
     """[(t, x)] alternando llegada y salida de cada parada."""
     t, x = 0.0, start_x
@@ -123,7 +113,7 @@ def banner(t: dict) -> str:
         out.append(ba.label(f"{num} {name}", sx + hero_w / 2, feet + 30, d["muted"], 12, anchor="middle"))
 
     # --- animación
-    css = [cycle_css("wk", len(walk), 0.6), cycle_css("ty", len(typing), 0.45), cycle_css("fl", 2, 0.16),
+    css = [px.cycle_css("wk", len(walk), 0.6), px.cycle_css("ty", len(typing), 0.45), px.cycle_css("fl", 2, 0.16),
            ".cur{animation:blink 1.1s steps(1) infinite}@keyframes blink{50%{opacity:0}}"]
     move = "".join(f"{pct(tt)}{{transform:translateX({x - m:.1f}px)}}" for tt, x in events)
     css.append(f".hero{{animation:path {period}s linear infinite}}@keyframes path{{{move}100%{{transform:translateX({events[-1][1] - m:.1f}px)}}}}")

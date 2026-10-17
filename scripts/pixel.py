@@ -78,3 +78,22 @@ def png_data_uri(path) -> str:
     import base64
 
     return "data:image/png;base64," + base64.b64encode(open(path, "rb").read()).decode()
+
+
+def cycle_css(cls: str, n: int, dur: float) -> str:
+    """Cicla n fotogramas (.cls0 … .cls{n-1}) con opacidad por pasos."""
+    out = [f".{cls}{i}{{opacity:{1 if i == 0 else 0};animation:{cls}{i} {dur}s steps(1) infinite}}" for i in range(n)]
+    for i in range(n):
+        a, b = 100 * i / n, 100 * (i + 1) / n
+        kf = f"0%{{opacity:0}}{a:.2f}%{{opacity:1}}{b:.2f}%{{opacity:0}}" if i else f"0%{{opacity:1}}{b:.2f}%{{opacity:0}}"
+        out.append(f"@keyframes {cls}{i}{{{kf}}}")
+    return "".join(out)
+
+
+def vis_css(cls: str, spans: list[tuple[float, float]], period: float, base: int = 0) -> str:
+    """Muestra .cls sólo en los tramos [ini, fin) de cada ciclo de `period` s.
+
+    `base` es la opacidad sin animación (prefers-reduced-motion)."""
+    kf = "".join(f"{100 * a / period:.3f}%{{opacity:1}}{100 * b / period:.3f}%{{opacity:0}}" for a, b in spans)
+    return (f".{cls}{{opacity:{base};animation:v-{cls} {period}s steps(1) infinite}}"
+            f"@keyframes v-{cls}{{0%{{opacity:0}}{kf}}}")

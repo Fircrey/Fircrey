@@ -1,9 +1,10 @@
 """Genera assets/pixel/ a partir de las imágenes de Gemini (una sola vez).
 
-    python scripts/tools/make_pixel_assets.py --hero <hoja.jpg> --bg <bogota.jpg>         --projects <proyectos.jpg> --process <niveles.jpg> --cta <amanecer.jpg> --office <oficina.jpg>
+    python scripts/tools/make_pixel_assets.py --hero <hoja.jpg> --portrait <hoja.jpg> --tree <arbol.jpg> --seal <leon_marino.jpg>         --bg <bogota.jpg> --projects <proyectos.jpg> --process <niveles.jpg> --cta <amanecer.jpg> --office <oficina.jpg>
 
-- Personaje: recorta cada fotograma, ajusta la cuadrícula (celda de 7,5 px),
-  quita el fondo magenta y unifica la paleta.
+- Hojas de sprites (personaje, árbol, león marino): recorta cada fotograma,
+  ajusta la cuadrícula (celda de 7,5 px), quita el fondo magenta y las
+  etiquetas de texto, y unifica la paleta de cada hoja.
 - Escenas de secciones: recorte + cuadrícula nativa + paleta limitada.
 - Fondo: lo lleva a 400 px nativos, limita la paleta, borra las ventanas de
   código que quedarían bajo el texto y separa el cohete para animarlo.
@@ -22,11 +23,28 @@ from pixelize import build_palette, load, magenta_mask, period, quantize, sample
 
 OUT = Path(__file__).resolve().parents[2] / "assets" / "pixel"
 
-HERO_CELL = 7.5
-HERO_BOXES = {  # (x0, y0, x1, y1) en la hoja original de 2400 x 1792
-    "walk": [(450, 372, 642, 792), (774, 372, 990, 792), (1098, 372, 1332, 792), (1446, 372, 1680, 792)],
-    "type": [(558, 802, 996, 1238), (1074, 802, 1506, 1238), (1572, 802, 1998, 1238)],
-    "bulb": [(642, 1260, 762, 1380)],
+SHEET_CELL = 7.5
+# fotogramas por hoja: (x0, y0, x1, y1) en la hoja original de 2400 x 1792
+SHEETS = {
+    "hero": dict(colors=22, frames={
+        "walk": [(450, 372, 642, 792), (774, 372, 990, 792), (1098, 372, 1332, 792), (1446, 372, 1680, 792)],
+        "type": [(558, 802, 996, 1238), (1074, 802, 1506, 1238), (1572, 802, 1998, 1238)],
+        "bulb": [(642, 1260, 762, 1380)],
+    }),
+    "portrait": dict(colors=18, frames={  # misma hoja que "hero": bustos de reposo
+        "idle": [(408, 48, 600, 360), (708, 48, 912, 360)],
+    }),
+    "tree": dict(colors=26, frames={
+        "idle": [(216, 24, 552, 468), (594, 24, 936, 468)],
+        "prep": [(1554, 30, 1914, 480)],
+        "blast": [(630, 978, 948, 1386)],
+    }),
+    "seal": dict(colors=20, frames={
+        "idle": [(90, 12, 600, 360), (642, 12, 1158, 360)],
+        "clap": [(204, 360, 708, 720), (708, 360, 1200, 720), (1200, 360, 1680, 720)],
+        "blep": [(168, 1062, 690, 1416), (696, 1062, 1206, 1416), (1218, 1062, 1734, 1416)],
+        "happy": [(414, 1416, 912, 1788), (924, 1416, 1416, 1788), (1434, 1356, 1920, 1788)],
+    }, exclude=[(0, 0, 276, 120), (0, 360, 276, 480), (0, 1062, 276, 1200), (0, 1416, 432, 1640), (1434, 1356, 1740, 1416)]),
 }
 
 BG_WIDTH = 400
@@ -61,23 +79,26 @@ def scenes(sources: dict[str, str]) -> None:
         Image.fromarray(q, "RGB").save(OUT / f"{name}.png", optimize=True)
 
 
-def hero(path: str) -> None:
+def sheet(name: str, path: str) -> None:
+    spec = SHEETS[name]
     img = load(path)
     mask = magenta_mask(img)
+    for x0, y0, x1, y1 in spec.get("exclude", []):  # etiquetas de texto de la hoja
+        mask[y0:y1, x0:x1] = True
     frames = {}
-    for name, boxes in HERO_BOXES.items():
+    for pose, boxes in spec["frames"].items():
         for k, (x0, y0, x1, y1) in enumerate(boxes):
             crop, m = img[y0:y1, x0:x1], mask[y0:y1, x0:x1]
-            _, ox = period(crop, 0, HERO_CELL - 0.05, HERO_CELL + 0.06)
-            _, oy = period(crop, 1, HERO_CELL - 0.05, HERO_CELL + 0.06)
-            frames[f"{name}{k}"] = trim(*sample(crop, m, HERO_CELL, ox, oy))
-    palette = build_palette([c[a] for c, a in frames.values()], 22)
-    (OUT / "hero").mkdir(parents=True, exist_ok=True)
+            _, ox = period(crop, 0, SHEET_CELL - 0.05, SHEET_CELL + 0.06)
+            _, oy = period(crop, 1, SHEET_CELL - 0.05, SHEET_CELL + 0.06)
+            frames[f"{pose}{k}"] = trim(*sample(crop, m, SHEET_CELL, ox, oy))
+    palette = build_palette([c[a] for c, a in frames.values()], spec["colors"])
+    (OUT / name).mkdir(parents=True, exist_ok=True)
     for key, (colors, alpha) in frames.items():
         q = quantize(colors, palette).astype(int)
         r, g, b = q[..., 0], q[..., 1], q[..., 2]
         alpha = alpha & ~((b - g > 60) & (r > 25) & (r > g))  # restos morados del fondo
-        save_rgba(q.astype(np.uint8), alpha, str(OUT / "hero" / f"{key}.png"))
+        save_rgba(q.astype(np.uint8), alpha, str(OUT / name / f"{key}.png"))
 
 
 def background(path: str) -> None:
@@ -127,13 +148,14 @@ if __name__ == "__main__":
     import argparse
 
     ap = argparse.ArgumentParser()
-    for opt in ("hero", "bg", "projects", "process", "cta", "office"):
+    for opt in ("hero", "portrait", "tree", "seal", "bg", "projects", "process", "cta", "office"):
         ap.add_argument(f"--{opt}")
     args = vars(ap.parse_args())
     OUT.mkdir(parents=True, exist_ok=True)
-    if args["hero"]:
-        hero(args["hero"])
+    for name in SHEETS:
+        if args[name]:
+            sheet(name, args[name])
     if args["bg"]:
         background(args["bg"])
-    scenes({k: v for k, v in args.items() if v and k not in ("hero", "bg")})
+    scenes({k: v for k, v in args.items() if v and k in {s for s, _, _ in SCENES.values()}})
     print("OK:", ", ".join(sorted(p.name for p in OUT.rglob("*.png"))))

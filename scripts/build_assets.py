@@ -358,6 +358,80 @@ def banner(t: dict) -> str:
     return svg(W, h, title, "".join(b), css)
 
 
+INTRO = ("Soy cofundador y COO de Magnor, una empresa de desarrollo de software con productos propios y "
+         "proyectos a medida. Llevo proyectos de la idea a producción: requerimientos, arquitectura, desarrollo "
+         "web y móvil, integraciones y despliegue. Estudio Ingeniería de Sistemas en la Universidad Jorge Tadeo "
+         "Lozano (8.º semestre) y soy técnico en Electricidad y Electrónica.")
+TYPE_CPS = 55  # caracteres por segundo del efecto de máquina de escribir
+
+
+def intro(t: dict) -> str:
+    """La intro como cuadro de diálogo de RPG: retrato, placa con el nombre y
+    texto que se escribe una sola vez y queda fijo."""
+    import pixel
+
+    S = 4
+    busts = [pixel.from_png(PIXEL / "portrait" / f"idle{i}.png") for i in range(2)]
+    size, lh = 21, 31
+    px0, py0 = 26, 46                       # esquina del cuadro (deja sitio a la placa)
+    pw = 200                                # columna del retrato
+    tx = px0 + pw + 40
+    lines = SANS[400].wrap(INTRO, size, W - tx - 70)
+    bh = max(len(lines) * lh + 64, 230)
+    h = py0 + bh + 18
+    box_w = W - 2 * px0
+    bg = "#0B1E2B"
+
+    b = [f'<rect x="{px0}" y="{py0}" width="{box_w}" height="{bh}" fill="{bg}"/>',
+         # marco doble en escalón, como los cuadros de diálogo clásicos
+         f'<rect x="{px0 + 3}" y="{py0 + 3}" width="{box_w - 6}" height="{bh - 6}" stroke="#E6F3F6" stroke-width="6" shape-rendering="crispEdges"/>',
+         f'<rect x="{px0 + 12}" y="{py0 + 12}" width="{box_w - 24}" height="{bh - 24}" stroke="#22C3D6" stroke-width="3" shape-rendering="crispEdges"/>',
+         f'<rect x="{px0 + 6}" y="{py0 + bh}" width="{box_w}" height="6" fill="#06121B"/>',
+         f'<rect x="{px0 + box_w}" y="{py0 + 6}" width="6" height="{bh}" fill="#06121B"/>']
+
+    # retrato
+    fx, fy, fs = px0 + 34, py0 + 34, pw - 20
+    b.append(f'<rect x="{fx}" y="{fy}" width="{fs}" height="{bh - 68}" fill="#10293A" stroke="#22C3D6" stroke-width="3" shape-rendering="crispEdges"/>')
+    bw, bht = len(busts[0][0]) * S, len(busts[0]) * S
+    ox, oy = fx + (fs - bw) / 2, fy + bh - 68 - bht
+    b.append(f'<g shape-rendering="crispEdges"><g class="pb0">{pixel.to_paths(busts[0], S, ox, oy)}</g>'
+             f'<g class="pb1">{pixel.to_paths(busts[1], S, ox, oy)}</g></g>')
+
+    # placa con el nombre
+    name = "JESÚS PACHÓN"
+    nw = MONO[500].width(name, 15, 0.1) + 36
+    b.append(f'<rect x="{px0 + 34}" y="{py0 - 18}" width="{_num(nw)}" height="40" fill="#06121B"/>'
+             f'<rect x="{px0 + 30}" y="{py0 - 22}" width="{_num(nw)}" height="40" fill="#22C3D6"/>')
+    b.append(text(MONO[500], name, px0 + 48, py0 + 4, 15, "#0B1E2B", track=0.1))
+
+    # texto, con "Magnor" resaltado y una cortina por línea para el efecto de escritura
+    css = []
+    t0 = 0.6
+    for i, line in enumerate(lines):
+        y = py0 + 58 + i * lh
+        k = line.find("Magnor")
+        if k < 0:
+            b.append(text(SANS[400], line, tx, y, size, "#E6F3F6"))
+        else:
+            pre, post = line[:k], line[k + 6:]
+            b.append(text(SANS[400], pre, tx, y, size, "#E6F3F6"))
+            b.append(text(SANS[400], "Magnor", tx + SANS[400].width(pre, size), y, size, "#22C3D6"))
+            b.append(text(SANS[400], post, tx + SANS[400].width(pre + "Magnor", size), y, size, "#E6F3F6"))
+        lw = SANS[400].width(line, size) + 12
+        dur = len(line) / TYPE_CPS
+        b.append(f'<rect class="tp" style="animation-duration:{dur:.2f}s;animation-delay:{t0:.2f}s;'
+                 f'animation-timing-function:steps({len(line)})" x="{tx - 2}" y="{y - size - 4}" width="{_num(lw + 4)}" height="{lh}" fill="{bg}"/>')
+        t0 += dur + 0.12
+    b.append(f'<path class="nx" style="animation-delay:{t0:.2f}s" d="M{px0 + box_w - 56} {py0 + bh - 46}h18l-9 10z" fill="#22C3D6"/>')
+
+    # la cortina se encoge hacia la derecha; sin animación queda a escala 0 (texto visible)
+    css.append(".tp{transform-box:fill-box;transform-origin:100% 50%;transform:scaleX(0);animation-name:tp;animation-fill-mode:both}"
+               "@keyframes tp{from{transform:scaleX(1)}to{transform:scaleX(0)}}")
+    css.append(".nx{animation:nx 1s steps(1) infinite both}@keyframes nx{0%{opacity:1}50%{opacity:0}}")
+    css.append(pixel.vis_css("pb1", [(3.2, 3.5)], 3.5) + ".pb0{opacity:1}")
+    return svg(W, h, "Jesús Pachón: " + INTRO, "".join(b), "".join(css))
+
+
 def impact(t: dict) -> str:
     h, m = 200, 48
     vsize, lsize = 52, 17
@@ -458,32 +532,100 @@ def section(t: dict, num: str, name: str, note: str) -> str:
     return svg(W, h, f"{num} {name}", "".join(b))
 
 
+TREE_PERIOD = 8.0
+TREE_EMIT = 5.3     # segundo del ciclo en que sale la onda
+WAVE_SPEED = 650.0  # px/s
+
+
 def stack(t: dict) -> str:
+    """Stack por capas, como un edificio de pisos. Un árbol lanza una onda de
+    sonido y cada tecnología tiembla al pasarle la onda, sin caerse."""
+    import pixel
+
     m, row_h, top = 48, 66, 116
     h = top + row_h * len(STACK) + 30
+    S = 3
+    tree = {k: pixel.from_png(PIXEL / "tree" / f"{k}.png") for k in ("idle0", "idle1", "prep0", "blast0")}
+    tw = max(len(g[0]) for g in tree.values()) * S
+    th = max(len(g) for g in tree.values()) * S
+    tx, ty = W - m - tw + 6, h - 22 - th          # esquina superior izquierda del árbol
+    mouth_x, mouth_y = tx + 8, ty + th * 0.55      # boca (el árbol mira a la izquierda)
+
+    def hit(cx: float) -> str:
+        return f"{TREE_EMIT + max(mouth_x - cx, 0) / WAVE_SPEED:.2f}s"
+
+    def quake(body: str, cx: float) -> str:
+        return f'<g class="q" style="animation-delay:{hit(cx)}">{body}</g>'
+
     b = [frame(t, 0, 0, W, h, grid=False)]
     b.append(label("Lenguajes", m, 62, t["muted"], 12))
     x = m + 130
     for lang in LANGUAGES:
-        b.append(text(SANS[600], lang, x, 64, 20, t["text"]))
-        x += SANS[600].width(lang, 20) + 28
+        lw = SANS[600].width(lang, 20)
+        b.append(quake(text(SANS[600], lang, x, 64, 20, t["text"]), x + lw / 2))
+        x += lw + 28
     spine = m + 6
     y0 = top + row_h / 2 - 4
     b.append(f'<path d="M{spine} {_num(y0)}V{_num(y0 + row_h * (len(STACK) - 1))}" stroke="{t["accent"]}" stroke-opacity=".45" stroke-width="1.5"/>')
     for i, (layer, items) in enumerate(STACK):
         ry = top + i * row_h
         cy = ry + row_h / 2 - 4
-        b.append(f'<path d="M{m} {ry}H{W - m}" stroke="{t["border"]}"/>')
+        b.append(f'<path d="M{m} {ry}H{tx - 20}" stroke="{t["border"]}"/>')
         b.append(f'<circle cx="{spine}" cy="{_num(cy)}" r="5" fill="{t["bg"]}" stroke="{t["accent"]}" stroke-width="1.5"/>')
         b.append(label(layer, m + 26, cy + 5, t["accent_text"], 13))
         x = m + 300
         for item in items:
             body, cw = chip(t, item, x, cy - 15, 14)
-            b.append(body)
+            b.append(quake(body, x + cw / 2))
             x += cw + 10
+
+    # onda: tres arcos de bloques pixel que cruzan los pisos hacia la izquierda
+    mid = top + row_h * len(STACK) / 2 - 4
+    blocks = []
+    for k, color in enumerate(("#E6F3F6", "#22C3D6", "#22C3D6")):
+        R, span = 300 + k * 24, 210
+        edge = (R * R - span * span) ** 0.5
+        for yy in range(-span, span + 1, 6):
+            xx = -((R * R - yy * yy) ** 0.5 - edge) - k * 24
+            blocks.append(f'<rect x="{round(xx / 6) * 6}" y="{yy}" width="6" height="6" fill="{color}"/>')
+    travel = mouth_x - (m + 260)
+    b.append(f'<clipPath id="cw"><rect width="{W}" height="{h}" rx="18"/></clipPath>'
+             f'<g clip-path="url(#cw)"><g transform="translate({_num(mouth_x)} {_num(mid)})">'
+             f'<g class="wave" shape-rendering="crispEdges">{"".join(blocks)}</g></g></g>')
+
+    # árbol (espejado para mirar a la izquierda)
+    def sprite(k: str, cls: str) -> str:
+        g = tree[k]
+        gw, gh = len(g[0]) * S, len(g) * S
+        ox = tx + (tw - gw) / 2
+        oy = ty + th - gh
+        return (f'<g class="{cls}" transform="translate({_num(ox + gw)} {_num(oy)}) scale(-1 1)">'
+                f'{pixel.to_paths(g, S)}</g>')
+
+    b.append(f'<rect x="{tx + 14}" y="{ty + th - 4}" width="{tw - 28}" height="8" rx="4" fill="#000" fill-opacity=".35"/>')
+    b.append(f'<g shape-rendering="crispEdges"><g class="t-idle">{sprite("idle0", "ti0")}{sprite("idle1", "ti1")}</g>'
+             f'{sprite("prep0", "t-prep")}{sprite("blast0", "t-blast")}</g>')
+
+    P, e = TREE_PERIOD, TREE_EMIT
+    end = e + travel / WAVE_SPEED
+    css = [
+        pixel.cycle_css("ti", 2, 0.5),
+        pixel.vis_css("t-idle", [(0, e - 0.6), (e + 1.3, P)], P, base=1),
+        pixel.vis_css("t-prep", [(e - 0.6, e)], P),
+        pixel.vis_css("t-blast", [(e, e + 1.3)], P),
+        f".wave{{opacity:0;animation:wave {P}s linear infinite}}"
+        f"@keyframes wave{{0%,{100 * e / P:.2f}%{{transform:translateX(0);opacity:0}}"
+        f"{100 * (e + 0.1) / P:.2f}%{{opacity:.95}}"
+        f"{100 * (end - 0.15) / P:.2f}%{{opacity:.85}}"
+        f"{100 * end / P:.2f}%{{transform:translateX(-{_num(travel)}px);opacity:0}}100%{{opacity:0}}}}",
+        ".q{transform-box:fill-box;transform-origin:50% 100%;animation:quake " + f"{P}s linear infinite" + "}"
+        "@keyframes quake{0%{transform:none}1.2%{transform:translate(-3px,0) rotate(-2deg)}"
+        "2.4%{transform:translate(3px,-1px) rotate(1.6deg)}3.6%{transform:translate(-2px,0) rotate(-1deg)}"
+        "4.8%{transform:translate(1px,0) rotate(.5deg)}6%,100%{transform:none}}",
+    ]
     title = "Stack por capas. Lenguajes: " + ", ".join(LANGUAGES) + ". " + ". ".join(
         f"{layer}: {', '.join(items)}" for layer, items in STACK) + "."
-    return svg(W, h, title, "".join(b))
+    return svg(W, h, title, "".join(b), "".join(css))
 
 
 def process(t: dict) -> str:
@@ -566,7 +708,46 @@ def stats_template(t: dict) -> tuple[str, list[dict]]:
         if i:
             b.append(f'<path d="M{_num(x - 24)} {top + 42}V{top + 140}" stroke="{t["border"]}"/>')
     b.append("<!--updated-->")
-    return svg(W, STATS_H, "__TITLE__", "".join(b)), slots
+    seal_svg, seal_css = seal(top)
+    b.append(seal_svg)
+    return svg(W, STATS_H, "__TITLE__", "".join(b), seal_css + "/*MOOD*/"), slots
+
+
+SEAL_PERIOD = 6.0
+SEAL_REST = 3.6   # segundos en reposo antes de cada acción
+SEAL_X = 120      # bajo el escritorio, mirando hacia la ventana
+
+
+def seal(floor: float) -> tuple[str, str]:
+    """León marino en el suelo de la oficina. Su ánimo lo elige stats.mjs con
+    los datos reales: celebra con la pelota en una gran semana, aplaude si hubo
+    actividad reciente y saca la lengua, tranquilo, si no la hubo."""
+    import pixel
+
+    S = 3
+    names ={"idle": 2, "clap": 3, "happy": 3, "blep": 3}
+    grids = {f"{k}{i}": pixel.from_png(PIXEL / "seal" / f"{k}{i}.png") for k, n in names.items() for i in range(n)}
+    sw = max(len(g[0]) for g in grids.values()) * S
+
+    def frame_svg(key: str, cls: str) -> str:
+        g = grids[key]
+        gw, gh = len(g[0]) * S, len(g) * S
+        return (f'<g class="{cls}" transform="translate({_num(SEAL_X + (sw - gw) / 2)} {_num(floor - 4 - gh)})">'
+                f'{pixel.to_paths(g, S)}</g>')
+
+    out = [f'<rect x="{SEAL_X + 24}" y="{floor - 8}" width="{sw - 40}" height="8" rx="4" fill="#000" fill-opacity=".4"/>',
+           '<g shape-rendering="crispEdges">',
+           f'<g class="sl-idle">{frame_svg("idle0", "si0")}{frame_svg("idle1", "si1")}</g>']
+    for mood, n in (("clap", 3), ("happy", 3), ("blep", 3)):
+        inner = "".join(frame_svg(f"{mood}{i}", f"s{mood[0]}{i}") for i in range(n))
+        out.append(f'<g class="sl-act mood-{mood}">{inner}</g>')
+    out.append("</g>")
+    P, r = SEAL_PERIOD, SEAL_REST
+    css = (pixel.cycle_css("si", 2, 0.9) + pixel.cycle_css("sc", 3, 0.36) + pixel.cycle_css("sh", 3, 0.6)
+           + pixel.cycle_css("sb", 3, 0.75)
+           + pixel.vis_css("sl-idle", [(0, r)], P, base=1) + pixel.vis_css("sl-act", [(r, P)], P)
+           + ".mood-clap,.mood-happy,.mood-blep{display:none}")
+    return "".join(out), css
 
 
 def glyph_table(face: Face, chars: str, size: float) -> dict:
@@ -600,6 +781,7 @@ def main() -> None:
     import build_pixel
     for name, t in THEMES.items():
         write("banner", name, build_pixel.banner(t))
+        write("intro", name, intro(t))
         write("impact", name, impact(t))
         for p, lay in zip(PROJECTS, layouts):
             write(f"card-{p['slug']}", name, card(t, p, card_w, card_h, lay))
