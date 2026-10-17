@@ -1,0 +1,559 @@
+"""Genera los SVG estáticos del perfil en assets/ y las plantillas de estadísticas.
+
+Todo el texto se convierte a trazos para que el diseño sea idéntico en cualquier
+sistema (un SVG cargado con <img> no puede usar fuentes externas).
+
+Uso:   python scripts/build_assets.py
+Deps:  pip install fonttools uharfbuzz
+Las fuentes (licencia OFL) se descargan en scripts/.fonts/ la primera vez.
+"""
+
+from __future__ import annotations
+
+import json
+import urllib.request
+from html import escape
+from pathlib import Path
+
+import uharfbuzz as hb
+from fontTools.pens.svgPathPen import SVGPathPen
+from fontTools.pens.transformPen import TransformPen
+from fontTools.ttLib import TTFont
+from fontTools.varLib import instancer
+
+ROOT = Path(__file__).resolve().parent.parent
+ASSETS = ROOT / "assets"
+TEMPLATES = ROOT / "scripts" / "templates"
+FONT_DIR = ROOT / "scripts" / ".fonts"
+FONT_URLS = {
+    "SpaceGrotesk.ttf": "https://github.com/google/fonts/raw/main/ofl/spacegrotesk/SpaceGrotesk%5Bwght%5D.ttf",
+    "JetBrainsMono.ttf": "https://github.com/google/fonts/raw/main/ofl/jetbrainsmono/JetBrainsMono%5Bwght%5D.ttf",
+}
+
+W = 1200  # ancho de referencia de todas las piezas anchas
+
+THEMES = {
+    "dark": dict(
+        bg="#0B1E2B", panel="#0E2535", grid="#22C3D6", grid_op=0.10, border="#1D3B4E",
+        text="#E6F3F6", muted="#8EA8B5", accent="#22C3D6", accent_text="#22C3D6",
+        chip="#10293A", on_accent="#0B1E2B",
+    ),
+    "light": dict(
+        bg="#F5F9FA", panel="#FFFFFF", grid="#0B1E2B", grid_op=0.07, border="#D2E0E6",
+        text="#0B1E2B", muted="#4F6672", accent="#22C3D6", accent_text="#08707E",
+        chip="#EAF4F6", on_accent="#0B1E2B",
+    ),
+}
+
+REDUCED_MOTION = "@media (prefers-reduced-motion:reduce){*{animation:none!important}.lit{opacity:1!important}}"
+
+
+# ---------------------------------------------------------------- tipografía
+
+def _font_path(name: str) -> Path:
+    path = FONT_DIR / name
+    if not path.exists():
+        FONT_DIR.mkdir(parents=True, exist_ok=True)
+        urllib.request.urlretrieve(FONT_URLS[name], path)
+    return path
+
+
+def _num(v: float) -> str:
+    s = f"{v:.1f}"
+    return s[:-2] if s.endswith(".0") else s
+
+
+class Face:
+    """Una fuente variable fijada a un peso: mide y convierte texto a trazos."""
+
+    def __init__(self, file: str, wght: int):
+        path = _font_path(file)
+        self._hb = hb.Font(hb.Face(path.read_bytes()))
+        self._hb.set_variations({"wght": wght})
+        tt = instancer.instantiateVariableFont(TTFont(path), {"wght": wght})
+        self._glyphs = tt.getGlyphSet()
+        self._order = tt.getGlyphOrder()
+        self.upem = tt["head"].unitsPerEm
+
+    def _shape(self, text: str):
+        buf = hb.Buffer()
+        buf.add_str(text)
+        buf.guess_segment_properties()
+        hb.shape(self._hb, buf, {"kern": True})
+        return buf.glyph_infos, buf.glyph_positions
+
+    def width(self, text: str, size: float, track: float = 0) -> float:
+        _, pos = self._shape(text)
+        return sum(p.x_advance for p in pos) * size / self.upem + track * size * max(len(pos) - 1, 0)
+
+    def path(self, text: str, x: float, y: float, size: float, track: float = 0) -> str:
+        infos, pos = self._shape(text)
+        s = size / self.upem
+        pen = SVGPathPen(self._glyphs, ntos=_num)
+        cx = 0.0
+        for info, p in zip(infos, pos):
+            name = self._order[info.codepoint]
+            ox = x + cx + p.x_offset * s
+            self._glyphs[name].draw(TransformPen(pen, (s, 0, 0, -s, ox, y - p.y_offset * s)))
+            cx += p.x_advance * s + track * size
+        return pen.getCommands()
+
+    def wrap(self, text: str, size: float, max_w: float, track: float = 0) -> list[str]:
+        lines, cur = [], ""
+        for word in text.split(" "):  # split() también cortaría en espacios duros
+            trial = f"{cur} {word}".strip()
+            if cur and self.width(trial, size, track) > max_w:
+                lines.append(cur)
+                cur = word
+            else:
+                cur = trial
+        if cur:
+            lines.append(cur)
+        return lines
+
+
+SANS = {w: Face("SpaceGrotesk.ttf", w) for w in (400, 500, 600, 700)}
+MONO = {w: Face("JetBrainsMono.ttf", w) for w in (400, 500)}
+
+
+def text(face: Face, s: str, x: float, y: float, size: float, fill: str,
+         anchor: str = "start", track: float = 0, cls: str = "") -> str:
+    w = face.width(s, size, track)
+    if anchor == "end":
+        x -= w
+    elif anchor == "middle":
+        x -= w / 2
+    c = f' class="{cls}"' if cls else ""
+    return f'<path{c} fill="{fill}" d="{face.path(s, x, y, size, track)}"/>'
+
+
+def label(s: str, x: float, y: float, fill: str, size: float = 13, anchor: str = "start", w: int = 500) -> str:
+    """Etiqueta técnica: monoespaciada, mayúsculas y con tracking."""
+    return text(MONO[w], s.upper(), x, y, size, fill, anchor, track=0.08)
+
+
+# ---------------------------------------------------------------- piezas comunes
+
+def svg(w: float, h: float, title: str, body: str, css: str = "") -> str:
+    style = f"<style>{css}{REDUCED_MOTION}</style>" if css else ""
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{_num(w)}" height="{_num(h)}" '
+        f'viewBox="0 0 {_num(w)} {_num(h)}" role="img" aria-labelledby="t" fill="none">'
+        f'<title id="t">{escape(title)}</title>{style}{body}</svg>'
+    )
+
+
+def frame(t: dict, x: float, y: float, w: float, h: float, r: float = 18, grid: bool = True) -> str:
+    """Panel de plano: fondo, retícula de puntos, borde y marcas de esquina."""
+    out = [f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="{r}" fill="{t["bg"]}"/>']
+    if grid:
+        out.append(
+            f'<pattern id="dots" width="24" height="24" patternUnits="userSpaceOnUse" x="{x + 12}" y="{y + 12}">'
+            f'<circle cx="1" cy="1" r="1" fill="{t["grid"]}" fill-opacity="{t["grid_op"]}"/></pattern>'
+            f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="{r}" fill="url(#dots)"/>'
+        )
+    out.append(f'<rect x="{x + .5}" y="{y + .5}" width="{w - 1}" height="{h - 1}" rx="{r - .5}" stroke="{t["border"]}"/>')
+    k, o = 14, 10  # longitud y separación de las marcas de esquina
+    x0, y0, x1, y1 = x + o, y + o, x + w - o, y + h - o
+    d = (f"M{x0} {y0 + k}V{y0}H{x0 + k}M{x1 - k} {y0}H{x1}V{y0 + k}"
+         f"M{x1} {y1 - k}V{y1}H{x1 - k}M{x0 + k} {y1}H{x0}V{y1 - k}")
+    out.append(f'<path d="{d}" stroke="{t["accent"]}" stroke-width="1.5" stroke-opacity=".7"/>')
+    return "".join(out)
+
+
+def chip(t: dict, s: str, x: float, y: float, size: float = 14) -> tuple[str, float]:
+    """Etiqueta con borde; devuelve (svg, ancho)."""
+    f = MONO[500]
+    tw = f.width(s, size)
+    w, h = tw + 24, size + 16
+    body = (f'<rect x="{x}" y="{y}" width="{_num(w)}" height="{h}" rx="{h / 2}" fill="{t["chip"]}" stroke="{t["border"]}"/>'
+            + text(f, s, x + 12, y + h / 2 + size * 0.36, size, t["text"]))
+    return body, w
+
+
+def status(t: dict, s: str, x: float, y: float, live: bool = True) -> str:
+    """Nodo de estado (el mismo motivo de los 4 pasos) + texto."""
+    out = []
+    if live:
+        out.append(f'<circle class="pulse" cx="{x + 6}" cy="{y - 5}" r="6" stroke="{t["accent"]}" stroke-width="1.5"/>')
+    out.append(f'<circle cx="{x + 6}" cy="{y - 5}" r="4.5" fill="{t["accent"]}"/>')
+    out.append(label(s, x + 20, y, t["accent_text"], 13))
+    return "".join(out)
+
+
+PULSE_CSS = (".pulse{transform-box:fill-box;transform-origin:center;animation:pulse 3.2s ease-out infinite}"
+             "@keyframes pulse{0%{transform:scale(1);opacity:.9}70%,100%{transform:scale(2.6);opacity:0}}")
+
+
+def flow_css(length: float, period: float, dash: float = 110) -> str:
+    return (f".flow{{stroke-dasharray:{dash} {_num(length + dash)};animation:flow {period}s linear infinite}}"
+            f"@keyframes flow{{from{{stroke-dashoffset:{dash}}}to{{stroke-dashoffset:{_num(-length)}}}}}"
+            ".lit{opacity:.28;animation:lit var(--p) ease-out infinite}"
+            "@keyframes lit{0%{opacity:.28}6%{opacity:1}40%,100%{opacity:.28}}")
+
+
+def lit_delay(at: float, period: float) -> str:
+    """Retardo negativo para que el nodo se encienda cuando pasa el pulso."""
+    return f"{_num(((at - 0.1) % period) - period)}s"
+
+
+def write(name: str, theme: str, content: str) -> None:
+    ASSETS.mkdir(exist_ok=True)
+    (ASSETS / f"{name}-{theme}.svg").write_text(content, encoding="utf-8")
+
+
+# ---------------------------------------------------------------- contenido
+
+STEPS = [
+    ("01", "Entender", "Requerimientos, usuarios y qué significa que el proyecto salga bien."),
+    ("02", "Diseñar", "Arquitectura, modelo de datos y alcance por fases."),
+    ("03", "Construir", "Web y móvil, integraciones y pruebas automatizadas."),
+    ("04", "Desplegar", "Puesta en producción, manuales y guía de operación."),
+]
+
+IMPACT = [
+    ("12", "días de cero a producción"),
+    ("+1.800", "pruebas automatizadas en un solo proyecto"),
+    ("iOS + Android", "apps publicadas en App Store y Google Play"),
+    ("5", "productos en producción o piloto"),
+]
+
+PROJECTS = [
+    dict(
+        slug="federacion",
+        kind="Proyecto para cliente",
+        status="En producción",
+        title="FECODATLE · Federación Colombiana de Atletismo",
+        what="Web y panel de gestión. La federación se había quedado sin sitio web.",
+        result="En 12 días pasó a publicar sola noticias, documentos, calendario y galería desde su propio panel.",
+        chips=["+1.800 pruebas", "Accesibilidad 100/100", "Acceso por roles"],
+        stack="Next.js · TypeScript · PostgreSQL",
+    ),
+    dict(
+        slug="seguridad",
+        kind="Proyecto para cliente",
+        status="En operación",
+        title="Plataforma B2B de seguridad y emergencias",
+        what="App móvil, panel de administración web y backend en la nube.",
+        result="En operación con clientes activos y app publicada en App Store y Google Play.",
+        chips=["629 pruebas", "Entrega con acta", "Manuales de operación"],
+        stack="React Native/Expo · Next.js · FastAPI · PostgreSQL",
+    ),
+    dict(
+        slug="filo",
+        kind="Producto Magnor",
+        status="Piloto remunerado",
+        title="Filo · SaaS para profesionales de la belleza",
+        what="Web y app móvil, pensadas para Latinoamérica.",
+        result="Ya está en pilotos remunerados.",
+        chips=["176 pruebas", "73 endpoints", "29 tablas"],
+        stack="Next.js · Expo · Drizzle · PostgreSQL",
+    ),
+    dict(
+        slug="atencion-ia",
+        kind="Producto Magnor",
+        status=None,  # TODO: confirmar estado (producción / piloto)
+        title="Atención al cliente con IA, multiempresa",
+        what="Varias empresas en una sola plataforma, cada una con su propia base de conocimiento.",
+        result="Búsqueda semántica conectada a Claude y panel de supervisión.",
+        chips=["+1.000 pruebas", "Multiempresa", "Búsqueda semántica"],
+        stack="Python · FastAPI · PostgreSQL · Next.js",
+    ),
+]
+
+MAGNOR = dict(
+    slug="magnor",
+    kind="Producto Magnor",
+    status="En producción",
+    title="magnor.tech · sitio corporativo y software interno",
+    what="Portada 3D y herramientas internas: Kanban, calendario y documentos.",
+    result="En producción 15 días después de empezar.",
+    chips=["171 pruebas", "15 días a producción", "Portada 3D"],
+    stack="Next.js · React · PostgreSQL",
+)
+
+STACK = [
+    ("Interfaz web y móvil", ["React", "Next.js", "Tailwind", "React Native", "Expo"]),
+    ("Backend y APIs", ["Node.js", "NestJS", "FastAPI", "REST", "Redis"]),
+    ("Datos", ["PostgreSQL", "Supabase", "Firebase", "Drizzle"]),
+    ("IA y machine learning", ["SDK de Anthropic", "AI SDK", "XGBoost"]),
+    ("Integraciones", ["WhatsApp Business API", "Wompi", "Google APIs", "Twilio"]),
+    ("Infra y despliegue", ["Docker", "GitHub Actions", "Google Cloud", "Vercel", "Cloudflare"]),
+]
+LANGUAGES = ["TypeScript", "JavaScript", "Python", "SQL"]
+
+SECTIONS = {
+    "proyectos": ("01", "Proyectos", "Casos de estudio"),
+    "stack": ("02", "Stack", "Agrupado por capas"),
+    "proceso": ("03", "Cómo trabajo", "De la idea a producción"),
+    "actividad": ("04", "Actividad", "Generado a diario por GitHub Actions"),
+}
+
+
+# ---------------------------------------------------------------- piezas
+
+def banner(t: dict) -> str:
+    h, m = 400, 64
+    period = 7.0
+    b = [frame(t, 0, 0, W, h)]
+    b.append(label("Bogotá, Colombia  ·  Software a medida y productos propios", m, 82, t["muted"], 14))
+    b.append(label("4.711° N  74.072° W", W - m, 82, t["muted"], 14, anchor="end", w=400))
+    b.append(text(SANS[700], "Jesús Nicolás Pachón Suárez", m, 160, 62, t["text"], track=-0.01))
+    role = "Cofundador y COO de Magnor"
+    b.append(text(MONO[500], role, m, 210, 24, t["accent_text"]))
+    cx = m + MONO[500].width(role, 24) + 8
+    b.append(f'<rect class="cur" x="{_num(cx)}" y="190" width="12" height="24" fill="{t["accent"]}"/>')
+    b.append(f'<path d="M{m} 250H{W - m}" stroke="{t["border"]}" stroke-dasharray="2 6"/>')
+
+    tag = "De la idea a producción."
+    b.append(text(SANS[600], tag, m, 336, 34, t["text"]))
+    x0 = m + SANS[600].width(tag, 34) + 56
+    x1 = W - m - 52
+    y = 325
+    nodes = [x0 + (x1 - x0) * i / 3 for i in range(4)]
+    length = x1 - x0
+    b.append(f'<path d="M{_num(x0)} {y}H{_num(x1)}" stroke="{t["border"]}" stroke-width="2"/>')
+    b.append(f'<path class="flow" d="M{_num(x0)} {y}H{_num(x1)}" stroke="{t["accent"]}" stroke-width="2" stroke-linecap="round"/>')
+    for i, (nx, (num, name, _)) in enumerate(zip(nodes, STEPS)):
+        at = period * (nx - x0) / length
+        last = i == 3
+        r = 9 if last else 7
+        b.append(f'<circle cx="{_num(nx)}" cy="{y}" r="{r}" fill="{t["bg"]}" stroke="{t["accent"]}" stroke-width="2"/>')
+        b.append(f'<circle class="lit" style="--p:{period}s;animation-delay:{lit_delay(at, period)}" '
+                 f'cx="{_num(nx)}" cy="{y}" r="{r - 3.5}" fill="{t["accent"]}"/>')
+        if last:
+            b.append(f'<circle class="ring" style="animation-delay:{lit_delay(at, period)}" cx="{_num(nx)}" cy="{y}" '
+                     f'r="{r}" stroke="{t["accent"]}" stroke-width="1.5"/>')
+        b.append(label(f"{num} {name}", nx, y + 38, t["muted"], 12, anchor="middle"))
+    css = (flow_css(length, period)
+           + ".cur{animation:blink 1.1s steps(1) infinite}@keyframes blink{50%{opacity:0}}"
+           + f".ring{{transform-box:fill-box;transform-origin:center;opacity:0;animation:ring {period}s ease-out infinite}}"
+           + "@keyframes ring{0%{transform:scale(1);opacity:.9}25%,100%{transform:scale(2.4);opacity:0}}")
+    title = "Jesús Nicolás Pachón Suárez · Cofundador y COO de Magnor · De la idea a producción"
+    return svg(W, h, title, "".join(b), css)
+
+
+def impact(t: dict) -> str:
+    h, m = 200, 48
+    vsize, lsize = 52, 17
+    lw = 244  # ancho máximo de la etiqueta
+    widths = [max(SANS[700].width(v, vsize), lw) for v, _ in IMPACT]
+    gap = (W - 2 * m - sum(widths)) / (len(IMPACT) - 1)
+    b = [frame(t, 0, 0, W, h, grid=False)]
+    x = m
+    for i, ((value, desc), cw) in enumerate(zip(IMPACT, widths)):
+        b.append(text(SANS[700], value, x, 98, vsize, t["text"], track=-0.02))
+        for j, line in enumerate(SANS[400].wrap(desc, lsize, lw)):
+            b.append(text(SANS[400], line, x, 132 + j * 23, lsize, t["muted"]))
+        b.append(f'<rect x="{_num(x)}" y="40" width="28" height="3" fill="{t["accent"]}"/>')
+        if i < len(IMPACT) - 1:
+            sx = x + cw + gap / 2
+            b.append(f'<path d="M{_num(sx)} 44V160" stroke="{t["border"]}"/>')
+        x += cw + gap
+    title = "Impacto: " + " · ".join(f"{v} {d}" for v, d in IMPACT)
+    return svg(W, h, title, "".join(b))
+
+
+def card_layout(p: dict, inner_w: float, pad: float) -> dict:
+    tw = inner_w - 2 * pad
+    return dict(
+        title=SANS[700].wrap(p["title"], 30, tw),
+        what=SANS[400].wrap(p["what"], 18, tw),
+        result=SANS[500].wrap(p["result"], 19, tw - 26),
+    )
+
+
+def card(t: dict, p: dict, w: float, h: float, lay: dict) -> str:
+    o, pad = 8, 32  # margen exterior transparente (separa las tarjetas) y relleno interior
+    iw, ih = w - 2 * o, h - 2 * o
+    x0 = o + pad
+    b = [frame(t, o, o, iw, ih, r=16)]
+    y = o + 50
+    if p["status"]:
+        b.append(status(t, p["status"], x0, y))
+    b.append(label(p["kind"], w - o - pad, y, t["muted"], 12, anchor="end"))
+    y += 52
+    for line in lay["title"]:
+        b.append(text(SANS[700], line, x0, y, 30, t["text"], track=-0.01))
+        y += 37
+    y += 10
+    for line in lay["what"]:
+        b.append(text(SANS[400], line, x0, y, 18, t["muted"]))
+        y += 25
+    y += 10
+    b.append(text(SANS[500], "→", x0, y, 19, t["accent_text"]))
+    for line in lay["result"]:
+        b.append(text(SANS[500], line, x0 + 26, y, 19, t["text"]))
+        y += 26
+    cy = o + ih - 108
+    cx = x0
+    for c in p["chips"]:
+        body, cw = chip(t, c, cx, cy, 13)
+        if cx + cw > w - o - pad:
+            break
+        b.append(body)
+        cx += cw + 8
+    fy = o + ih - 52
+    b.append(f'<path d="M{x0} {fy}H{w - o - pad}" stroke="{t["border"]}"/>')
+    b.append(text(MONO[400], p["stack"], x0, fy + 30, 13, t["muted"]))
+    b.append(label("Ver caso →", w - o - pad, fy + 30, t["accent_text"], 13, anchor="end"))
+    title = f'{p["title"]}. {p["what"]} {p["result"]} Stack: {p["stack"]}.'
+    return svg(w, h, title, "".join(b), PULSE_CSS if p["status"] else "")
+
+
+def card_height(lay: dict) -> float:
+    content = 50 + 52 + 37 * len(lay["title"]) + 10 + 25 * len(lay["what"]) + 10 + 26 * len(lay["result"])
+    return content + 8 + 16 + 108 + 8  # hueco antes de chips + chips + pie + márgenes
+
+
+def section(t: dict, num: str, name: str, note: str) -> str:
+    h = 64
+    b = [label(num, 2, 40, t["accent_text"], 14), label(name, 40, 40, t["text"], 14)]
+    nx = 40 + MONO[500].width(name.upper(), 14, 0.08) + 20
+    note_w = MONO[400].width(note.upper(), 12, 0.08)
+    b.append(f'<path d="M{_num(nx)} 35H{_num(W - note_w - 22)}" stroke="{t["border"]}"/>')
+    b.append(label(note, W - 2, 40, t["muted"], 12, anchor="end", w=400))
+    return svg(W, h, f"{num} {name}", "".join(b))
+
+
+def stack(t: dict) -> str:
+    m, row_h, top = 48, 66, 116
+    h = top + row_h * len(STACK) + 30
+    b = [frame(t, 0, 0, W, h, grid=False)]
+    b.append(label("Lenguajes", m, 62, t["muted"], 12))
+    x = m + 130
+    for lang in LANGUAGES:
+        b.append(text(SANS[600], lang, x, 64, 20, t["text"]))
+        x += SANS[600].width(lang, 20) + 28
+    spine = m + 6
+    y0 = top + row_h / 2 - 4
+    b.append(f'<path d="M{spine} {_num(y0)}V{_num(y0 + row_h * (len(STACK) - 1))}" stroke="{t["accent"]}" stroke-opacity=".45" stroke-width="1.5"/>')
+    for i, (layer, items) in enumerate(STACK):
+        ry = top + i * row_h
+        cy = ry + row_h / 2 - 4
+        b.append(f'<path d="M{m} {ry}H{W - m}" stroke="{t["border"]}"/>')
+        b.append(f'<circle cx="{spine}" cy="{_num(cy)}" r="5" fill="{t["bg"]}" stroke="{t["accent"]}" stroke-width="1.5"/>')
+        b.append(label(layer, m + 26, cy + 5, t["accent_text"], 13))
+        x = m + 300
+        for item in items:
+            body, cw = chip(t, item, x, cy - 15, 14)
+            b.append(body)
+            x += cw + 10
+    title = "Stack por capas. Lenguajes: " + ", ".join(LANGUAGES) + ". " + ". ".join(
+        f"{layer}: {', '.join(items)}" for layer, items in STACK) + "."
+    return svg(W, h, title, "".join(b))
+
+
+def process(t: dict) -> str:
+    h, m = 260, 48
+    period = 8.0
+    last_w = 250  # ancho de la última columna
+    col = (W - 2 * m - last_w) / 3
+    y = 72
+    b = [frame(t, 0, 0, W, h, grid=False)]
+    x0, x1 = m + 20, m + col * 3 + 20
+    length = x1 - x0
+    b.append(f'<path d="M{x0} {y}H{_num(x1)}" stroke="{t["border"]}" stroke-width="2"/>')
+    b.append(f'<path class="flow" d="M{x0} {y}H{_num(x1)}" stroke="{t["accent"]}" stroke-width="2" stroke-linecap="round"/>')
+    for i, (num, name, desc) in enumerate(STEPS):
+        nx = m + col * i + 20
+        at = period * (nx - x0) / length
+        b.append(f'<circle cx="{_num(nx)}" cy="{y}" r="9" fill="{t["bg"]}" stroke="{t["accent"]}" stroke-width="2"/>')
+        b.append(f'<circle class="lit" style="--p:{period}s;animation-delay:{lit_delay(at, period)}" '
+                 f'cx="{_num(nx)}" cy="{y}" r="5" fill="{t["accent"]}"/>')
+        tx = nx - 9
+        b.append(label(num, tx, y + 50, t["accent_text"], 13))
+        b.append(text(SANS[600], name, tx, y + 86, 26, t["text"]))
+        for j, line in enumerate(SANS[400].wrap(desc, 17, (last_w if i == 3 else col) - 36)):
+            b.append(text(SANS[400], line, tx, y + 118 + j * 24, 17, t["muted"]))
+    title = "Cómo trabajo: " + " → ".join(f"{n}: {d}" for _, n, d in STEPS)
+    return svg(W, h, title, "".join(b), flow_css(length, period))
+
+
+def cta(t: dict) -> str:
+    h, m = 230, 56
+    b = [frame(t, 0, 0, W, h)]
+    b.append(label("¿Tienes un proyecto?", m, 70, t["accent_text"], 13))
+    b.append(text(SANS[700], "Lo llevamos de la idea a producción.", m, 122, 40, t["text"], track=-0.01))
+    b.append(text(SANS[400], "Requerimientos, arquitectura, desarrollo web y móvil, integraciones y despliegue.", m, 160, 19, t["muted"]))
+    b.append(label("Bogotá (UTC−5): mis mañanas coinciden con tu tarde en España", m, 196, t["muted"], 12, w=400))
+    bw, bh = 220, 56
+    bx, by = W - m - bw, 78
+    b.append(f'<rect x="{bx}" y="{by}" width="{bw}" height="{bh}" rx="{bh / 2}" fill="{t["accent"]}"/>')
+    b.append(text(SANS[600], "Escríbeme  →", bx + bw / 2, by + bh / 2 + 7, 20, t["on_accent"], anchor="middle"))
+    return svg(W, h, "¿Tienes un proyecto? Lo llevamos de la idea a producción. Escríbeme.", "".join(b))
+
+
+# ---------------------------------------------------------------- plantilla de estadísticas
+
+STATS = [
+    ("contributions", "contribuciones en 12 meses"),
+    ("activeDays", "días con actividad"),
+    ("longestStreak", "racha más larga, en días"),
+    ("bestWeek", "contribuciones en la mejor semana"),
+]
+STATS_H, STATS_M, STATS_VSIZE = 190, 48, 48
+
+
+def stats_template(t: dict) -> tuple[str, list[dict]]:
+    """Plantilla con marcadores; scripts/stats.mjs inserta las cifras."""
+    col = (W - 2 * STATS_M) / len(STATS)
+    b = [frame(t, 0, 0, W, STATS_H, grid=False)]
+    slots = []
+    for i, (key, desc) in enumerate(STATS):
+        x = STATS_M + col * i
+        b.append(f'<rect x="{_num(x)}" y="38" width="28" height="3" fill="{t["accent"]}"/>')
+        b.append(f"<!--{key}-->")
+        slots.append(dict(key=key, x=round(x, 1), y=96))
+        b.append(text(SANS[400], desc, x, 128, 17, t["muted"]))
+        if i:
+            b.append(f'<path d="M{_num(x - 24)} 42V140" stroke="{t["border"]}"/>')
+    b.append("<!--updated-->")
+    return svg(W, STATS_H, "__TITLE__", "".join(b)), slots
+
+
+def glyph_table(face: Face, chars: str, size: float) -> dict:
+    return {c: dict(d=face.path(c, 0, 0, size), w=round(face.width(c, size), 2)) for c in chars}
+
+
+def build_stats_templates() -> None:
+    TEMPLATES.mkdir(parents=True, exist_ok=True)
+    meta = {}
+    for name, t in THEMES.items():
+        tpl, slots = stats_template(t)
+        (TEMPLATES / f"stats-{name}.svg").write_text(tpl, encoding="utf-8")
+        meta[name] = dict(text=t["text"], muted=t["muted"])
+    meta["slots"] = slots
+    meta["size"] = STATS_VSIZE
+    meta["updated"] = dict(x=W - STATS_M, y=STATS_H - 26, size=12, prefix=label("Actualizado ", 0, 0, "#000", 12, w=400))
+    meta["glyphs"] = glyph_table(SANS[700], "0123456789.", STATS_VSIZE)
+    meta["mono"] = glyph_table(MONO[400], "0123456789-", 12)
+    meta["prefix_w"] = round(MONO[400].width("ACTUALIZADO ", 12, 0.08), 2)
+    (TEMPLATES / "stats.json").write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
+
+
+# ---------------------------------------------------------------- main
+
+def main() -> None:
+    card_w = 600
+    layouts = [card_layout(p, card_w - 16, 32) for p in PROJECTS]
+    card_h = max(card_height(l) for l in layouts)
+    magnor_lay = card_layout(MAGNOR, W - 16, 32)
+    magnor_h = card_height(magnor_lay)
+    for name, t in THEMES.items():
+        write("banner", name, banner(t))
+        write("impact", name, impact(t))
+        for p, lay in zip(PROJECTS, layouts):
+            write(f"card-{p['slug']}", name, card(t, p, card_w, card_h, lay))
+        write("card-magnor", name, card(t, MAGNOR, W, magnor_h, magnor_lay))
+        write("stack", name, stack(t))
+        write("process", name, process(t))
+        write("cta", name, cta(t))
+        for key, (num, title, note) in SECTIONS.items():
+            write(f"section-{key}", name, section(t, num, title, note))
+    build_stats_templates()
+    print(f"OK: {len(list(ASSETS.glob('*.svg')))} SVG en assets/")
+
+
+if __name__ == "__main__":
+    main()
