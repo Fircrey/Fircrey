@@ -432,6 +432,30 @@ def intro(t: dict) -> str:
     return svg(W, h, "Jesús Pachón: " + INTRO, "".join(b), "".join(css))
 
 
+LINKS = [
+    ("web", "SITIO WEB", "https://magnor.tech"),
+    ("linkedin", "LINKEDIN", "https://www.linkedin.com/in/jesus-pachon-suarez"),
+    ("email", "ESCRÍBEME", "mailto:pachonsuarezjesus@gmail.com"),
+]
+
+
+def menu_button(t: dict, label_text: str) -> str:
+    """Botón de menú RPG: marco con esquinas en escalón, como las opciones de
+    diálogo de un videojuego de 16 bits. Lleva un margen transparente a la
+    derecha para que varios botones seguidos no queden pegados."""
+    size, pad_x, h, gap = 15, 26, 52, 14
+    tw = MONO[500].width(label_text, size, 0.08)
+    w = round(tw + pad_x * 2 + 30)
+    cut = 7  # tamaño del corte en escalón de cada esquina
+    d = (f"M{cut} 0H{w - cut}L{w} {cut}V{h - cut}L{w - cut} {h}H{cut}L0 {h - cut}V{cut}Z")
+    b = [f'<path d="{d}" fill="{t["bg"]}" stroke="#22C3D6" stroke-width="3" shape-rendering="crispEdges"/>']
+    # flecha triangular, como el cursor de "continuar" del diálogo
+    ay = h / 2
+    b.append(f'<path d="M{pad_x - 14} {ay - 7}l12 7l-12 7z" fill="#22C3D6"/>')
+    b.append(text(MONO[500], label_text, pad_x + 10, ay + size * 0.36, size, t["text"], track=0.08))
+    return svg(w + gap, h, label_text, "".join(b))
+
+
 def impact(t: dict) -> str:
     h, m = 200, 48
     vsize, lsize = 52, 17
@@ -782,6 +806,8 @@ def main() -> None:
     for name, t in THEMES.items():
         write("banner", name, build_pixel.banner(t))
         write("intro", name, intro(t))
+        for key, label_text, _ in LINKS:
+            write(f"btn-{key}", name, menu_button(t, label_text))
         write("impact", name, impact(t))
         for p, lay in zip(PROJECTS, layouts):
             write(f"card-{p['slug']}", name, card(t, p, card_w, card_h, lay))
