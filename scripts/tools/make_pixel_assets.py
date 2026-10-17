@@ -1,9 +1,10 @@
 """Genera assets/pixel/ a partir de las imágenes de Gemini (una sola vez).
 
-    python scripts/tools/make_pixel_assets.py <hoja_personaje.jpg> <fondo_bogota.jpg>
+    python scripts/tools/make_pixel_assets.py --hero <hoja.jpg> --bg <bogota.jpg>         --projects <proyectos.jpg> --process <niveles.jpg> --cta <amanecer.jpg> --office <oficina.jpg>
 
 - Personaje: recorta cada fotograma, ajusta la cuadrícula (celda de 7,5 px),
   quita el fondo magenta y unifica la paleta.
+- Escenas de secciones: recorte + cuadrícula nativa + paleta limitada.
 - Fondo: lo lleva a 400 px nativos, limita la paleta, borra las ventanas de
   código que quedarían bajo el texto y separa el cohete para animarlo.
 """
@@ -37,6 +38,27 @@ TEXT_ZONES = [(18, 19, 210, 28), (316, 19, 382, 28), (18, 32, 300, 53), (18, 57,
 ROCKET_ORIGIN = (340, 100)
 ROCKET_ROWS = {10: (22, 23), 11: (21, 24), **{r: (20, 25) for r in range(12, 31)}, **{r: (17, 28) for r in range(31, 33)},
                **{r: (17, 28) for r in range(33, 36)}, **{r: (16, 29) for r in range(36, 42)}}
+
+
+# escenas: nombre -> (imagen fuente, recorte x0 y0 x1 y1 en px originales, celda nativa)
+SCENES = {
+    "proj-federacion": ("projects", (84, 6, 2400, 582), 6.0),
+    "proj-filo": ("projects", (84, 606, 1800, 1194), 6.0),
+    "proj-magnor": ("projects", (720, 1212, 1572, 1788), 6.0),
+    "process": ("process", (0, 120, 3168, 1344), 7.92),
+    "office": ("office", (0, 96, 3168, 1152), 7.92),
+    "cta": ("cta", (0, 0, 3168, 1296), 7.92),
+}
+
+
+def scenes(sources: dict[str, str]) -> None:
+    for name, (src, (x0, y0, x1, y1), cell) in SCENES.items():
+        if src not in sources:
+            continue
+        crop = load(sources[src])[y0:y1, x0:x1]
+        colors, _ = sample(crop, None, cell, 0, 0)
+        q = quantize(colors, build_palette([colors], 40)).astype(np.uint8)
+        Image.fromarray(q, "RGB").save(OUT / f"{name}.png", optimize=True)
 
 
 def hero(path: str) -> None:
@@ -102,6 +124,16 @@ def background(path: str) -> None:
 
 
 if __name__ == "__main__":
-    hero(sys.argv[1])
-    background(sys.argv[2])
+    import argparse
+
+    ap = argparse.ArgumentParser()
+    for opt in ("hero", "bg", "projects", "process", "cta", "office"):
+        ap.add_argument(f"--{opt}")
+    args = vars(ap.parse_args())
+    OUT.mkdir(parents=True, exist_ok=True)
+    if args["hero"]:
+        hero(args["hero"])
+    if args["bg"]:
+        background(args["bg"])
+    scenes({k: v for k, v in args.items() if v and k not in ("hero", "bg")})
     print("OK:", ", ".join(sorted(p.name for p in OUT.rglob("*.png"))))
