@@ -556,6 +556,51 @@ def section(t: dict, num: str, name: str, note: str) -> str:
     return svg(W, h, f"{num} {name}", "".join(b))
 
 
+BRANDS = json.loads((ROOT / "scripts" / "data" / "brand-icons.json").read_text(encoding="utf-8"))["icons"]
+# tecnología -> (logo de Simple Icons, o None para un monograma propio; color de fondo si no hay logo)
+BADGE_ICON = {
+    "TypeScript": "typescript", "JavaScript": "javascript", "Python": "python", "SQL": None,
+    "React": "react", "Next.js": "nextdotjs", "Tailwind": "tailwindcss", "React Native": "react", "Expo": "expo",
+    "Node.js": "nodedotjs", "NestJS": "nestjs", "FastAPI": "fastapi", "REST": None, "Redis": "redis",
+    "PostgreSQL": "postgresql", "Supabase": "supabase", "Firebase": "firebase", "Drizzle": "drizzle",
+    "SDK de Anthropic": "anthropic", "AI SDK": "vercel", "XGBoost": None,
+    "WhatsApp Business API": "whatsapp", "Wompi": None, "Google APIs": "google", "Twilio": None,
+    "Docker": "docker", "GitHub Actions": "githubactions", "Google Cloud": "googlecloud", "Vercel": "vercel",
+    "Cloudflare": "cloudflare",
+}
+MONOGRAM = {"SQL": "DB", "REST": "{}", "XGBoost": "XG", "Wompi": "W", "Twilio": "T"}
+
+
+def _luma(hexv: str) -> float:
+    r, g, b = (int(hexv[i:i + 2], 16) for i in (0, 2, 4))
+    return (r * 299 + g * 587 + b * 114) / 1000
+
+
+def badge(t: dict, name: str, x: float, y: float) -> tuple[str, float]:
+    """Insignia con el logo y el color oficial de la marca (Simple Icons, CC0),
+    dibujada aquí mismo: no depende de shields.io ni de ningún servicio."""
+    size, h, pad, logo = 15, 30, 10, 16
+    slug = BADGE_ICON.get(name)
+    if slug:
+        bg = "#" + BRANDS[slug]["hex"]
+    else:
+        bg = "#2E4A5B"  # sin logo oficial: monograma sobre un tono neutro de la paleta
+    fg = "#0B1E2B" if _luma(bg[1:]) > 150 else "#FFFFFF"
+    tw = SANS[500].width(name, size)
+    w = pad + logo + 8 + tw + pad
+    out = [f'<rect x="{_num(x)}" y="{_num(y)}" width="{_num(w)}" height="{h}" rx="3" fill="{bg}"/>']
+    if _luma(bg[1:]) < 40:  # marcas negras: borde claro para que no se pierdan sobre el fondo
+        out.append(f'<rect x="{_num(x + .5)}" y="{_num(y + .5)}" width="{_num(w - 1)}" height="{h - 1}" rx="2.5" stroke="#3A5A6C"/>')
+    lx, ly = x + pad, y + (h - logo) / 2
+    if slug:
+        out.append(f'<path transform="translate({_num(lx)} {_num(ly)}) scale({logo / 24})" fill="{fg}" d="{BRANDS[slug]["path"]}"/>')
+    else:
+        mono = MONOGRAM[name]
+        out.append(text(MONO[500], mono, lx + logo / 2, ly + logo * 0.8, 13 if len(mono) > 1 else 15, fg, anchor="middle"))
+    out.append(text(SANS[500], name, lx + logo + 8, y + h / 2 + size * 0.36, size, fg))
+    return "".join(out), w
+
+
 TREE_PERIOD = 8.0
 TREE_EMIT = 5.3     # segundo del ciclo en que sale la onda
 WAVE_SPEED = 650.0  # px/s
@@ -582,12 +627,12 @@ def stack(t: dict) -> str:
         return f'<g class="q" style="animation-delay:{hit(cx)}">{body}</g>'
 
     b = [frame(t, 0, 0, W, h, grid=False)]
-    b.append(label("Lenguajes", m, 62, t["muted"], 12))
-    x = m + 130
+    b.append(label("Lenguajes", m + 26, 62, t["accent_text"], 13))
+    x = m + 300
     for lang in LANGUAGES:
-        lw = SANS[600].width(lang, 20)
-        b.append(quake(text(SANS[600], lang, x, 64, 20, t["text"]), x + lw / 2))
-        x += lw + 28
+        body, bw = badge(t, lang, x, 42)
+        b.append(quake(body, x + bw / 2))
+        x += bw + 10
     spine = m + 6
     y0 = top + row_h / 2 - 4
     b.append(f'<path d="M{spine} {_num(y0)}V{_num(y0 + row_h * (len(STACK) - 1))}" stroke="{t["accent"]}" stroke-opacity=".45" stroke-width="1.5"/>')
@@ -599,7 +644,7 @@ def stack(t: dict) -> str:
         b.append(label(layer, m + 26, cy + 5, t["accent_text"], 13))
         x = m + 300
         for item in items:
-            body, cw = chip(t, item, x, cy - 15, 14)
+            body, cw = badge(t, item, x, cy - 15)
             b.append(quake(body, x + cw / 2))
             x += cw + 10
 
