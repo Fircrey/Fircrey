@@ -476,7 +476,7 @@ def cta(t: dict) -> str:
     b.append(label("¿Tienes un proyecto?", m, 70, t["accent_text"], 13))
     b.append(text(SANS[700], "Lo llevamos de la idea a producción.", m, 122, 40, t["text"], track=-0.01))
     b.append(text(SANS[400], "Requerimientos, arquitectura, desarrollo web y móvil, integraciones y despliegue.", m, 160, 19, t["muted"]))
-    b.append(label("Bogotá (UTC−5): mis mañanas coinciden con tu tarde en España", m, 196, t["muted"], 12, w=400))
+    b.append(label("Bogotá, Colombia  ·  Trabajo en remoto con clientes de cualquier país", m, 196, t["muted"], 12, w=400))
     bw, bh = 220, 56
     bx, by = W - m - bw, 78
     b.append(f'<rect x="{bx}" y="{by}" width="{bw}" height="{bh}" rx="{bh / 2}" fill="{t["accent"]}"/>')
